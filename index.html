@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grid RTS Engine - Kiomet Inspired</title>
+  <title>Grid RTS Engine - Kiomet & Travian Inspired</title>
   <style>
     * {
       box-sizing: border-box;
@@ -683,10 +683,14 @@
         const px = b.tileX * TILE_SIZE + state.camera.x;
         const py = b.tileY * TILE_SIZE + state.camera.y;
 
-        if (b.type === 'mine' && IMAGES.mine) {
-          ctx.drawImage(IMAGES.mine, px, py, TILE_SIZE, TILE_SIZE);
-        } else if (b.type === 'residence' && IMAGES.residence) {
-          ctx.drawImage(IMAGES.residence, px, py, TILE_SIZE, TILE_SIZE);
+        let img = null;
+        if (b.type === 'mine') img = IMAGES.mine;
+        if (b.type === 'residence') img = IMAGES.residence;
+
+        if (img) {
+          const imgX = px + (TILE_SIZE - img.width) / 2;
+          const imgY = py + (TILE_SIZE - img.height) / 2;
+          ctx.drawImage(img, imgX, imgY);
         } else {
           ctx.fillStyle = b.type === 'mine' ? '#3b82f6' : 
                           b.type === 'residence' ? '#10b981' : 
@@ -728,8 +732,11 @@
         const py = u.y * TILE_SIZE + state.camera.y;
 
         const assetKey = u.type === 'tank' ? 'tank' : 'soldier';
-        if (IMAGES[assetKey]) {
-          ctx.drawImage(IMAGES[assetKey], px, py, TILE_SIZE, TILE_SIZE);
+        const img = IMAGES[assetKey];
+        if (img) {
+          const imgX = px + (TILE_SIZE - img.width) / 2;
+          const imgY = py + (TILE_SIZE - img.height) / 2;
+          ctx.drawImage(img, imgX, imgY);
         } else {
           ctx.fillStyle = u.type === 'tank' ? '#ef4444' : '#f97316';
           ctx.beginPath();

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grid Screen Prototype</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0b1020;
+      color: #dbe7ff;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    #wrap {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      user-select: none;
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(74, 144, 226, 0.12), transparent 20%),
+        radial-gradient(circle at 80% 30%, rgba(124, 58, 237, 0.10), transparent 22%),
+        linear-gradient(180deg, #0b1020 0%, #080c18 100%);
+    }
+
+    .hud {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(151, 173, 255, 0.18);
+      border-radius: 14px;
+      background: rgba(10, 14, 28, 0.72);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+      min-width: 220px;
+    }
+
+    .hud h1 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f2f6ff;
+    }
+
+    .hud .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #b9c7ec;
+    }
+
+    .hud .hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #8ea0d8;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(92, 124, 250, 0.16);
+      border: 1px solid rgba(92, 124, 250, 0.28);
+      color: #d7e1ff;
+      font-size: 12px;
+    }
+
+    .corner {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(151, 173, 255, 0.18);
+      background: rgba(10, 14, 28, 0.58);
+      color: #aebeea;
+      font-size: 12px;
+      text-align: right;
+      line-height: 1.45;
+      max-width: 260px;
+    }
+
+    .corner strong { color: #f5f8ff; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game"></canvas>
+
+    <div class="hud">
+      <h1>Grid Screen</h1>
+      <div class="row"><span>Cursor</span><span id="cursor">X: -, Y: -</span></div>
+      <div class="row"><span>Zoom</span><span id="zoom">100%</span></div>
+      <div class="row"><span>Origin</span><span id="origin">0, 0</span></div>
+      <div class="badge" id="tileInfo">Tile: none</div>
+      <div class="hint">Left click to place a marker. Mouse wheel to zoom. Drag to pan.</div>
+    </div>
+
+    <div class="corner">
+      <strong>Prototype goal:</strong><br>
+      world grid, camera, tile picking, and a clean foundation for movement and combat.
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const cursorEl = document.getElementById('cursor');
+    const zoomEl = document.getElementById('zoom');
+    const originEl = document.getElementById('origin');
+    const tileInfoEl = document.getElementById('tileInfo');
+
+    const state = {
+      dpr: Math.max(1, window.devicePixelRatio || 1),
+      width: 0,
+      height: 0,
+      cameraX: 0,
+      cameraY: 0,
+      tileSize: 48,
+      minTile: 22,
+      maxTile: 96,
+      dragging: false,
+      lastMouseX: 0,
+      lastMouseY: 0,
+      hover: null,
+      marker: null,
+      gridColor: 'rgba(169, 189, 255, 0.12)',
+      gridBoldColor: 'rgba(169, 189, 255, 0.24)'
+    };
+
+    const resize = () => {
+      state.dpr = Math.max(1, window.devicePixelRatio || 1);
+      state.width = window.innerWidth;
+      state.height = window.innerHeight;
+      canvas.width = Math.floor(state.width * state.dpr);
+      canvas.height = Math.floor(state.height * state.dpr);
+      canvas.style.width = state.width + 'px';
+      canvas.style.height = state.height + 'px';
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      draw();
+    };
+
+    const screenToWorld = (sx, sy) => ({
+      x: (sx - state.width / 2) / state.tileSize + state.cameraX,
+      y: (sy - state.height / 2) / state.tileSize + state.cameraY
+    });
+
+    const worldToScreen = (wx, wy) => ({
+      x: (wx - state.cameraX) * state.tileSize + state.width / 2,
+      y: (wy - state.cameraY) * state.tileSize + state.height / 2
+    });
+
+    const tileFromScreen = (sx, sy) => {
+      const world = screenToWorld(sx, sy);
+      return { tx: Math.floor(world.x), ty: Math.floor(world.y) };
+    };
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, state.width, state.height);
+
+      const leftWorld = state.cameraX - state.width / state.tileSize / 2 - 2;
+      const rightWorld = state.cameraX + state.width / state.tileSize / 2 + 2;
+      const topWorld = state.cameraY - state.height / state.tileSize / 2 - 2;
+      const bottomWorld = state.cameraY + state.height / state.tileSize / 2 + 2;
+
+      const startX = Math.floor(leftWorld);
+      const endX = Math.ceil(rightWorld);
+      const startY = Math.floor(topWorld);
+      const endY = Math.ceil(bottomWorld);
+
+      // Grid lines
+      for (let x = startX; x <= endX; x++) {
+        const sx = worldToScreen(x, 0).x;
+        ctx.beginPath();
+        ctx.strokeStyle = x % 5 === 0 ? state.gridBoldColor : state.gridColor;
+        ctx.lineWidth = x % 5 === 0 ? 1.2 : 1;
+        ctx.moveTo(Math.round(sx) + 0.5, 0);
+        ctx.lineTo(Math.round(sx) + 0.5, state.height);
+        ctx.stroke();
+      }
+
+      for (let y = startY; y <= endY; y++) {
+        const sy = worldToScreen(0, y).y;
+        ctx.beginPath();
+        ctx.strokeStyle = y % 5 === 0 ? state.gridBoldColor : state.gridColor;
+        ctx.lineWidth = y % 5 === 0 ? 1.2 : 1;
+        ctx.moveTo(0, Math.round(sy) + 0.5);
+        ctx.lineTo(state.width, Math.round(sy) + 0.5);
+        ctx.stroke();
+      }
+
+      // Axes
+      const origin = worldToScreen(0, 0);
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(origin.x) + 0.5, 0);
+      ctx.lineTo(Math.round(origin.x) + 0.5, state.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(origin.y) + 0.5);
+      ctx.lineTo(state.width, Math.round(origin.y) + 0.5);
+      ctx.stroke();
+
+      // Axis labels near origin
+      ctx.fillStyle = 'rgba(220, 235, 255, 0.9)';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('0,0', origin.x + 6, origin.y - 6);
+    }
+
+    function drawHover() {
+      if (!state.hover) return;
+      const { tx, ty } = state.hover;
+      const topLeft = worldToScreen(tx, ty);
+      ctx.fillStyle = 'rgba(92, 124, 250, 0.14)';
+      ctx.strokeStyle = 'rgba(146, 173, 255, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.fillRect(topLeft.x, topLeft.y, state.tileSize, state.tileSize);
+      ctx.strokeRect(topLeft.x + 0.5, topLeft.y + 0.5, state.tileSize - 1, state.tileSize - 1);
+    }
+
+    function drawMarker() {
+      if (!state.marker) return;
+      const { tx, ty } = state.marker;
+      const p = worldToScreen(tx, ty);
+      const cx = p.x + state.tileSize / 2;
+      const cy = p.y + state.tileSize / 2;
+
+      ctx.fillStyle = 'rgba(255, 210, 102, 0.92)';
+      ctx.strokeStyle = 'rgba(255, 246, 201, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(7, state.tileSize * 0.17), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#f4f7ff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('M', cx - 4, cy + 4);
+    }
+
+    function drawCenterCrosshair() {
+      const cx = state.width / 2;
+      const cy = state.height / 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - 8, cy);
+      ctx.lineTo(cx + 8, cy);
+      ctx.moveTo(cx, cy - 8);
+      ctx.lineTo(cx, cy + 8);
+      ctx.stroke();
+    }
+
+    function draw() {
+      drawGrid();
+      drawHover();
+      drawMarker();
+      drawCenterCrosshair();
+    }
+
+    function updateHUD(mouseX, mouseY) {
+      const tile = tileFromScreen(mouseX, mouseY);
+      state.hover = tile;
+      cursorEl.textContent = `X: ${tile.tx}, Y: ${tile.ty}`;
+      zoomEl.textContent = `${Math.round((state.tileSize / 48) * 100)}%`;
+      originEl.textContent = `${state.cameraX.toFixed(2)}, ${state.cameraY.toFixed(2)}`;
+      tileInfoEl.textContent = `Tile: (${tile.tx}, ${tile.ty})`;
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      state.dragging = true;
+      state.lastMouseX = e.clientX;
+      state.lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+      state.dragging = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      updateHUD(e.clientX, e.clientY);
+      if (state.dragging) {
+        const dx = e.clientX - state.lastMouseX;
+        const dy = e.clientY - state.lastMouseY;
+        state.cameraX -= dx / state.tileSize;
+        state.cameraY -= dy / state.tileSize;
+        state.lastMouseX = e.clientX;
+        state.lastMouseY = e.clientY;
+        draw();
+      } else {
+        draw();
+      }
+    });
+
+    canvas.addEventListener('click', (e) => {
+      const tile = tileFromScreen(e.clientX, e.clientY);
+      state.marker = tile;
+      draw();
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const oldSize = state.tileSize;
+      const direction = Math.sign(e.deltaY);
+      const factor = direction > 0 ? 0.9 : 1.1;
+      state.tileSize = Math.max(state.minTile, Math.min(state.maxTile, state.tileSize * factor));
+
+      // Keep the tile under the mouse stable while zooming.
+      const before = screenToWorld(e.clientX, e.clientY);
+      const after = screenToWorld(e.clientX, e.clientY);
+      state.cameraX += before.x - after.x;
+      state.cameraY += before.y - after.y;
+
+      zoomEl.textContent = `${Math.round((state.tileSize / 48) * 100)}%`;
+      draw();
+    }, { passive: false });
+
+    window.addEventListener('resize', resize);
+
+    // Seed the view with a small offset so the origin is visible.
+    state.cameraX = -2;
+    state.cameraY = -1;
+
+    resize();
+  </script>
+</body>
+</html>

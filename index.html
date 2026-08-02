@@ -219,7 +219,8 @@
 
     const ASSETS = {
       tank: "tank.webp",
-      soldier: "soldier.jpeg",
+      soldier: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><rect x='10' y='13' width='12' height='15' rx='3' fill='%231d4ed8'/><rect x='12' y='15' width='8' height='10' rx='1' fill='%232563eb'/><circle cx='16' cy='8' r='6' fill='%2360a5fa'/><path d='M 10 7 Q 16 4 22 7 L 21 10 Q 16 8 11 10 Z' fill='%230f172a'/><rect x='21' y='15' width='9' height='3' rx='1.5' fill='%23334155'/><rect x='2' y='17' width='8' height='2' rx='1' fill='%23475569'/></svg>",
+      civilian: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><rect x='11' y='13' width='10' height='14' rx='3' fill='%2338bdf8'/><circle cx='16' cy='9' r='5' fill='%237dd3fc'/></svg>",
       mine: "mine.webp",
       residence: "residence.webp"
     };
@@ -267,16 +268,28 @@
       playerFaction: 'blue'
     };
 
-    // Initialize Default Buildings & Natural Mines
+    // Initialize Default Buildings & Naturally Generated Procedural Mines
     function initGame() {
       // Starting Residences
       state.buildings.push(createBuilding('residence', 2, 2, 'blue'));
       state.buildings.push(createBuilding('residence', 4, 2, 'blue'));
 
-      // Naturally Generated Mines across the map
-      state.buildings.push(createBuilding('mine', 6, 3, 'neutral'));
-      state.buildings.push(createBuilding('mine', 1, 6, 'neutral'));
-      state.buildings.push(createBuilding('mine', 7, 7, 'neutral'));
+      // Procedurally / Naturally Generated Mines across the map
+      const numNaturalMines = 7;
+      for (let i = 0; i < numNaturalMines; i++) {
+        let rx, ry, attempts = 0;
+        do {
+          rx = Math.floor(Math.random() * 24) - 4;
+          ry = Math.floor(Math.random() * 24) - 4;
+          attempts++;
+        } while (
+          attempts < 50 && (
+            state.buildings.some(b => b.tileX === rx && b.tileY === ry) ||
+            Math.hypot(rx - 3, ry - 2) < 4 // Keep away from starting area
+          )
+        );
+        state.buildings.push(createBuilding('mine', rx, ry, 'neutral'));
+      }
 
       // Center camera on starting base
       state.camera.x = - (3 * TILE_SIZE - window.innerWidth / 2);

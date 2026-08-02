@@ -673,6 +673,23 @@
       return state.civilians - assigned;
     }
 
+    function getResidenceCivilians(resBuilding) {
+      if (resBuilding.type !== 'residence') return 0;
+      let civsLeft = state.civilians;
+      let residences = state.buildings.filter(b => b.type === 'residence');
+      residences.sort((a, b) => a.id - b.id);
+      
+      for (let r of residences) {
+        let capacity = r.capBonus || 10;
+        let assigned = Math.min(capacity, Math.max(0, civsLeft));
+        civsLeft -= assigned;
+        if (r.id === resBuilding.id) {
+          return assigned;
+        }
+      }
+      return 0;
+    }
+
     // ==========================================
     // 9. RENDER PIPELINE
     // ==========================================
@@ -734,6 +751,11 @@
         ctx.fillStyle = '#94a3b8';
         ctx.font = '10px sans-serif';
         ctx.fillText(b.type.toUpperCase(), px + 6, py + 16);
+
+        if (b.type === 'residence') {
+          const housed = getResidenceCivilians(b);
+          ctx.fillText(`Civ: ${housed}/${b.capBonus}`, px + 6, py + 28);
+        }
       });
 
       state.units.forEach(u => {
@@ -876,6 +898,9 @@
           
           actionsEl.appendChild(addBtn);
           actionsEl.appendChild(remBtn);
+        } else if (entity.type === 'residence') {
+          const housed = getResidenceCivilians(entity);
+          detailsEl.innerText += ` | Housed Civilians: ${housed} / ${entity.capBonus}`;
         } else if (entity.type === 'barracks') {
           const trainBtn = document.createElement('button');
           trainBtn.innerText = 'Train Soldier (50g + 1 Civ)';

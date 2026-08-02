@@ -511,6 +511,7 @@
     // ==========================================
     // 6. ECONOMY & TIME TICK
     // ==========================================
+    let civilianGrowthCounter = 0;
     setInterval(() => {
       let miners = 0;
       state.buildings.forEach(b => {
@@ -524,6 +525,16 @@
         if (b.type === 'residence') cap += b.capBonus;
       });
       state.civilianCap = cap;
+
+      if (state.civilians < state.civilianCap) {
+        civilianGrowthCounter++;
+        if (civilianGrowthCounter >= 5) {
+          state.civilians++;
+          civilianGrowthCounter = 0;
+        }
+      } else {
+        civilianGrowthCounter = 0;
+      }
 
       updateUI();
     }, TICK_RATE);

@@ -121,6 +121,20 @@
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const cursorEl = document.getElementById('cursor');
+    const ASSETS = {
+      tank: 'assets/tank.webp',
+      soldier: 'assets/soldier.webp'
+    };
+
+    const unitImages = {
+      tank: new Image(),
+      soldier: new Image()
+    };
+
+    const assetReady = {
+      tank: false,
+      soldier: false
+    };
     const zoomEl = document.getElementById('zoom');
     const originEl = document.getElementById('origin');
     const tileInfoEl = document.getElementById('tileInfo');
@@ -139,6 +153,11 @@
       lastMouseY: 0,
       hover: null,
       marker: null,
+      units: [
+        { type: 'tank', x: 4, y: 4 },
+        { type: 'soldier', x: 7, y: 6 },
+        { type: 'soldier', x: 9, y: 5 }
+      ],
       gridColor: 'rgba(169, 189, 255, 0.12)',
       gridBoldColor: 'rgba(169, 189, 255, 0.24)'
     };
@@ -254,6 +273,45 @@
       ctx.fillText('M', cx - 4, cy + 4);
     }
 
+    function drawUnitFallback(unit, x, y, size) {
+      const inset = size * 0.16;
+      const box = size - inset * 2;
+
+      if (unit.type === 'tank') {
+        ctx.fillStyle = 'rgba(120, 160, 255, 0.85)';
+        ctx.strokeStyle = 'rgba(230, 240, 255, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.fillRect(x + inset, y + inset + box * 0.18, box, box * 0.55);
+        ctx.strokeRect(x + inset, y + inset + box * 0.18, box, box * 0.55);
+        ctx.fillRect(x + inset + box * 0.32, y + inset, box * 0.22, box * 0.28);
+      } else {
+        ctx.fillStyle = 'rgba(255, 196, 120, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 244, 220, 0.95)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, box * 0.34, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + size / 2, y + size * 0.22);
+        ctx.lineTo(x + size / 2, y + size * 0.78);
+        ctx.stroke();
+      }
+    }
+
+    function drawUnits() {
+      for (const unit of state.units) {
+        const p = worldToScreen(unit.x, unit.y);
+        const size = state.tileSize;
+
+        if (assetReady[unit.type]) {
+          ctx.drawImage(unitImages[unit.type], p.x + 2, p.y + 2, size - 4, size - 4);
+        } else {
+          drawUnitFallback(unit, p.x, p.y, size);
+        }
+      }
+    }
+
     function drawCenterCrosshair() {
       const cx = state.width / 2;
       const cy = state.height / 2;
@@ -269,6 +327,7 @@
 
     function draw() {
       drawGrid();
+      drawUnits();
       drawHover();
       drawMarker();
       drawCenterCrosshair();
@@ -332,6 +391,13 @@
     }, { passive: false });
 
     window.addEventListener('resize', resize);
+
+    unitImages.tank.onload = () => { assetReady.tank = true; draw(); };
+    unitImages.soldier.onload = () => { assetReady.soldier = true; draw(); };
+    unitImages.tank.onerror = () => { assetReady.tank = false; draw(); };
+    unitImages.soldier.onerror = () => { assetReady.soldier = false; draw(); };
+    unitImages.tank.src = ASSETS.tank;
+    unitImages.soldier.src = ASSETS.soldier;
 
     // Seed the view with a small offset so the origin is visible.
     state.cameraX = -2;

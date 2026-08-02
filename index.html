@@ -3,407 +3,858 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grid Screen Prototype</title>
+  <title>Grid RTS Engine - Kiomet & Travian Inspired</title>
   <style>
-    html, body {
+    * {
+      box-sizing: border-box;
       margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body, html {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #0b1020;
-      color: #dbe7ff;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background-color: #080b10;
+      font-family: 'Segoe UI', Roboto, -apple-system, sans-serif;
+      color: #d1d5db;
     }
 
-    #wrap {
-      position: relative;
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100vw;
       height: 100vh;
-      user-select: none;
-      touch-action: none;
+      z-index: 1;
     }
 
     canvas {
       display: block;
       width: 100%;
       height: 100%;
-      background:
-        radial-gradient(circle at 20% 20%, rgba(74, 144, 226, 0.12), transparent 20%),
-        radial-gradient(circle at 80% 30%, rgba(124, 58, 237, 0.10), transparent 22%),
-        linear-gradient(180deg, #0b1020 0%, #080c18 100%);
     }
 
-    .hud {
+    /* Minimal Sci-Fi HUD Overlay */
+    #ui-layer {
       position: absolute;
-      top: 14px;
-      left: 14px;
-      padding: 12px 14px;
-      border: 1px solid rgba(151, 173, 255, 0.18);
-      border-radius: 14px;
-      background: rgba(10, 14, 28, 0.72);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.28);
-      min-width: 220px;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
     }
 
-    .hud h1 {
-      margin: 0 0 8px;
-      font-size: 15px;
-      letter-spacing: 0.08em;
+    .hud-panel {
+      pointer-events: auto;
+      background: rgba(13, 17, 23, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      backdrop-filter: blur(8px);
+      border-radius: 6px;
+      padding: 12px 18px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Top HUD: Resource & Population Bar */
+    #top-bar {
+      align-self: center;
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      font-size: 14px;
+      letter-spacing: 0.5px;
       text-transform: uppercase;
-      color: #f2f6ff;
+      font-weight: 600;
     }
 
-    .hud .row {
+    .res-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .res-value {
+      color: #38bdf8;
+      font-size: 16px;
+      font-family: monospace;
+    }
+
+    /* Bottom Inspector & Build Bar */
+    #bottom-hud {
       display: flex;
       justify-content: space-between;
-      gap: 18px;
+      align-items: flex-end;
+      gap: 16px;
+    }
+
+    #inspector-panel {
+      min-width: 320px;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .panel-title {
       font-size: 13px;
-      line-height: 1.5;
-      color: #b9c7ec;
+      color: #94a3b8;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 4px;
+      margin-bottom: 4px;
     }
 
-    .hud .hint {
-      margin-top: 10px;
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #e2e8f0;
+      padding: 8px 12px;
+      border-radius: 4px;
       font-size: 12px;
-      color: #8ea0d8;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
 
-    .badge {
-      display: inline-block;
-      margin-top: 10px;
+    button:hover:not(:disabled) {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: #38bdf8;
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .active-mode {
+      background: rgba(56, 189, 248, 0.3) !important;
+      border-color: #38bdf8 !important;
+      color: #38bdf8 !important;
+    }
+
+    /* Fire Control Selection Styling */
+    .fc-btn {
+      font-size: 11px;
       padding: 4px 8px;
-      border-radius: 999px;
-      background: rgba(92, 124, 250, 0.16);
-      border: 1px solid rgba(92, 124, 250, 0.28);
-      color: #d7e1ff;
-      font-size: 12px;
     }
 
-    .corner {
-      position: absolute;
-      right: 14px;
-      top: 14px;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid rgba(151, 173, 255, 0.18);
-      background: rgba(10, 14, 28, 0.58);
-      color: #aebeea;
-      font-size: 12px;
-      text-align: right;
-      line-height: 1.45;
-      max-width: 260px;
+    #build-menu {
+      display: flex;
+      gap: 8px;
     }
 
-    .corner strong { color: #f5f8ff; }
+    .shortcut-tag {
+      color: #64748b;
+      font-size: 10px;
+      margin-left: 4px;
+    }
   </style>
 </head>
 <body>
-  <div id="wrap">
-    <canvas id="game"></canvas>
 
-    <div class="hud">
-      <h1>Grid Screen</h1>
-      <div class="row"><span>Cursor</span><span id="cursor">X: -, Y: -</span></div>
-      <div class="row"><span>Zoom</span><span id="zoom">100%</span></div>
-      <div class="row"><span>Origin</span><span id="origin">0, 0</span></div>
-      <div class="badge" id="tileInfo">Tile: none</div>
-      <div class="hint">Left click to place a marker. Mouse wheel to zoom. Drag to pan.</div>
+  <div id="canvas-container">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+  <div id="ui-layer">
+    <!-- Top Bar -->
+    <div id="top-bar" class="hud-panel">
+      <div class="res-item">
+        <span>Resources:</span>
+        <span id="ui-resources" class="res-value">0</span>
+      </div>
+      <div class="res-item">
+        <span>Civilians:</span>
+        <span id="ui-civilians" class="res-value">15 / 20</span>
+        <span style="font-size: 11px; color: #64748b;">(<span id="ui-miners">0</span> Mining)</span>
+      </div>
+      <div class="res-item">
+        <span>Tanks / Soldiers:</span>
+        <span id="ui-military" class="res-value">0 / 0</span>
+      </div>
     </div>
 
-    <div class="corner">
-      <strong>Prototype goal:</strong><br>
-      world grid, camera, tile picking, and a clean foundation for movement and combat.
+    <!-- Bottom Interface -->
+    <div id="bottom-hud">
+      <!-- Context Inspector -->
+      <div id="inspector-panel" class="hud-panel">
+        <div class="panel-title" id="inspector-title">Selection: None</div>
+        <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px;">
+          Click a unit or building to inspect. Right-click to issue move orders.
+        </div>
+        <div id="inspector-actions" class="btn-group"></div>
+      </div>
+
+      <!-- Quick Build Toolbar -->
+      <div id="build-menu" class="hud-panel">
+        <button onclick="setBuildMode('mine')">Mine <span class="shortcut-tag">(50g)</span></button>
+        <button onclick="setBuildMode('residence')">Residence <span class="shortcut-tag">(100g)</span></button>
+        <button onclick="setBuildMode('barracks')">Barracks <span class="shortcut-tag">(200g)</span></button>
+        <button onclick="setBuildMode('armory')">Armory <span class="shortcut-tag">(500g)</span></button>
+        <button onclick="setBuildMode('radar')">Radar <span class="shortcut-tag">(250g)</span></button>
+      </div>
     </div>
   </div>
 
   <script>
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    const cursorEl = document.getElementById('cursor');
+    // ==========================================
+    // 1. CONFIGURATION & ASSETS
+    // ==========================================
+    const TILE_SIZE = 64; // Pixels per grid square
+    const TICK_RATE = 1000; // Economy tick interval (ms)
+
     const ASSETS = {
-      tank: 'assets/tank.webp',
-      soldier: 'assets/soldier.webp'
+      tank: "tank.webp",
+      soldier: "soldier.webp",
+      mine: "mine.webp"
     };
 
-    const unitImages = {
-      tank: new Image(),
-      soldier: new Image()
-    };
+    const IMAGES = {};
+    let assetsLoaded = 0;
 
-    const assetReady = {
-      tank: false,
-      soldier: false
-    };
-    const zoomEl = document.getElementById('zoom');
-    const originEl = document.getElementById('origin');
-    const tileInfoEl = document.getElementById('tileInfo');
+    function loadAssets() {
+      Object.keys(ASSETS).forEach(key => {
+        const img = new Image();
+        img.src = ASSETS[key];
+        img.onload = () => { IMAGES[key] = img; };
+        img.onerror = () => { IMAGES[key] = null; }; // Fallback to canvas render
+      });
+    }
+    loadAssets();
 
+    // ==========================================
+    // 2. STATE MANAGEMENT
+    // ==========================================
     const state = {
-      dpr: Math.max(1, window.devicePixelRatio || 1),
-      width: 0,
-      height: 0,
-      cameraX: 0,
-      cameraY: 0,
-      tileSize: 48,
-      minTile: 22,
-      maxTile: 96,
-      dragging: false,
-      lastMouseX: 0,
-      lastMouseY: 0,
-      hover: null,
-      marker: null,
-      units: [
-        { type: 'tank', x: 4, y: 4 },
-        { type: 'soldier', x: 7, y: 6 },
-        { type: 'soldier', x: 9, y: 5 }
-      ],
-      gridColor: 'rgba(169, 189, 255, 0.12)',
-      gridBoldColor: 'rgba(169, 189, 255, 0.24)'
+      resources: 0,
+      civilians: 15,
+      civilianCap: 20,
+      
+      // Entities
+      units: [],
+      buildings: [],
+      
+      // Interaction State
+      selectedEntityId: null,
+      hoveredTile: { x: 0, y: 0 },
+      buildMode: null, // 'mine', 'residence', etc.
+      
+      // Camera
+      camera: {
+        x: 0,
+        y: 0,
+        zoom: 1.0,
+        isDragging: false,
+        dragStart: { x: 0, y: 0 }
+      },
+
+      // Faction
+      playerFaction: 'blue'
     };
 
-    const resize = () => {
-      state.dpr = Math.max(1, window.devicePixelRatio || 1);
-      state.width = window.innerWidth;
-      state.height = window.innerHeight;
-      canvas.width = Math.floor(state.width * state.dpr);
-      canvas.height = Math.floor(state.height * state.dpr);
-      canvas.style.width = state.width + 'px';
-      canvas.style.height = state.height + 'px';
-      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-      draw();
-    };
+    // Initialize Default Buildings
+    function initGame() {
+      // Starting Residences
+      state.buildings.push(createBuilding('residence', 2, 2, 'blue'));
+      state.buildings.push(createBuilding('residence', 4, 2, 'blue'));
 
-    const screenToWorld = (sx, sy) => ({
-      x: (sx - state.width / 2) / state.tileSize + state.cameraX,
-      y: (sy - state.height / 2) / state.tileSize + state.cameraY
-    });
-
-    const worldToScreen = (wx, wy) => ({
-      x: (wx - state.cameraX) * state.tileSize + state.width / 2,
-      y: (wy - state.cameraY) * state.tileSize + state.height / 2
-    });
-
-    const tileFromScreen = (sx, sy) => {
-      const world = screenToWorld(sx, sy);
-      return { tx: Math.floor(world.x), ty: Math.floor(world.y) };
-    };
-
-    function drawGrid() {
-      ctx.clearRect(0, 0, state.width, state.height);
-
-      const leftWorld = state.cameraX - state.width / state.tileSize / 2 - 2;
-      const rightWorld = state.cameraX + state.width / state.tileSize / 2 + 2;
-      const topWorld = state.cameraY - state.height / state.tileSize / 2 - 2;
-      const bottomWorld = state.cameraY + state.height / state.tileSize / 2 + 2;
-
-      const startX = Math.floor(leftWorld);
-      const endX = Math.ceil(rightWorld);
-      const startY = Math.floor(topWorld);
-      const endY = Math.ceil(bottomWorld);
-
-      // Grid lines
-      for (let x = startX; x <= endX; x++) {
-        const sx = worldToScreen(x, 0).x;
-        ctx.beginPath();
-        ctx.strokeStyle = x % 5 === 0 ? state.gridBoldColor : state.gridColor;
-        ctx.lineWidth = x % 5 === 0 ? 1.2 : 1;
-        ctx.moveTo(Math.round(sx) + 0.5, 0);
-        ctx.lineTo(Math.round(sx) + 0.5, state.height);
-        ctx.stroke();
-      }
-
-      for (let y = startY; y <= endY; y++) {
-        const sy = worldToScreen(0, y).y;
-        ctx.beginPath();
-        ctx.strokeStyle = y % 5 === 0 ? state.gridBoldColor : state.gridColor;
-        ctx.lineWidth = y % 5 === 0 ? 1.2 : 1;
-        ctx.moveTo(0, Math.round(sy) + 0.5);
-        ctx.lineTo(state.width, Math.round(sy) + 0.5);
-        ctx.stroke();
-      }
-
-      // Axes
-      const origin = worldToScreen(0, 0);
-      ctx.strokeStyle = 'rgba(120, 200, 255, 0.45)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(Math.round(origin.x) + 0.5, 0);
-      ctx.lineTo(Math.round(origin.x) + 0.5, state.height);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, Math.round(origin.y) + 0.5);
-      ctx.lineTo(state.width, Math.round(origin.y) + 0.5);
-      ctx.stroke();
-
-      // Axis labels near origin
-      ctx.fillStyle = 'rgba(220, 235, 255, 0.9)';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('0,0', origin.x + 6, origin.y - 6);
+      // Center camera on starting base
+      state.camera.x = - (3 * TILE_SIZE - window.innerWidth / 2);
+      state.camera.y = - (3 * TILE_SIZE - window.innerHeight / 2);
     }
 
-    function drawHover() {
-      if (!state.hover) return;
-      const { tx, ty } = state.hover;
-      const topLeft = worldToScreen(tx, ty);
-      ctx.fillStyle = 'rgba(92, 124, 250, 0.14)';
-      ctx.strokeStyle = 'rgba(146, 173, 255, 0.85)';
-      ctx.lineWidth = 2;
-      ctx.fillRect(topLeft.x, topLeft.y, state.tileSize, state.tileSize);
-      ctx.strokeRect(topLeft.x + 0.5, topLeft.y + 0.5, state.tileSize - 1, state.tileSize - 1);
+    // Entity Factories
+    let idCounter = 1;
+
+    function createUnit(type, x, y, faction = 'blue') {
+      const isTank = type === 'tank';
+      return {
+        id: idCounter++,
+        entityType: 'unit',
+        type: type, // 'soldier' | 'tank'
+        faction: faction,
+        x: x, // Grid continuous floats
+        y: y,
+        targetX: x,
+        targetY: y,
+        hp: isTank ? 10 : 1,
+        maxHp: isTank ? 10 : 1,
+        speed: isTank ? 0.015 : 0.025, // Tiles per tick frame
+        meleeDmg: isTank ? 10 : 1,
+        // Tank Cannon Mechanics
+        cannonDmg: isTank ? 5 : 0,
+        cannonCooldown: 0, // Tick counter (10s = 10000ms)
+        fireControl: 'aggressive', // 'aggressive' | 'ignore_infantry' | 'ignore_buildings' | 'prioritize_buildings' | 'hold_fire'
+        selected: false
+      };
     }
 
-    function drawMarker() {
-      if (!state.marker) return;
-      const { tx, ty } = state.marker;
-      const p = worldToScreen(tx, ty);
-      const cx = p.x + state.tileSize / 2;
-      const cy = p.y + state.tileSize / 2;
+    function createBuilding(type, tileX, tileY, faction = 'blue') {
+      const base = {
+        id: idCounter++,
+        entityType: 'building',
+        type: type,
+        faction: faction,
+        tileX: tileX,
+        tileY: tileY,
+        hp: 20,
+        maxHp: 20,
+        assignedCivilians: 0,
+        trainingQueue: []
+      };
 
-      ctx.fillStyle = 'rgba(255, 210, 102, 0.92)';
-      ctx.strokeStyle = 'rgba(255, 246, 201, 0.95)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, Math.max(7, state.tileSize * 0.17), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (type === 'mine') base.cost = 50;
+      if (type === 'residence') { base.cost = 100; base.capBonus = 10; }
+      if (type === 'barracks') base.cost = 200;
+      if (type === 'armory') base.cost = 500;
+      if (type === 'radar') { base.cost = 250; base.vision = 4; }
 
-      ctx.fillStyle = '#f4f7ff';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText('M', cx - 4, cy + 4);
+      return base;
     }
 
-    function drawUnitFallback(unit, x, y, size) {
-      const inset = size * 0.16;
-      const box = size - inset * 2;
+    // ==========================================
+    // 3. CANVAS & CAMERA SYSTEM
+    // ==========================================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
 
-      if (unit.type === 'tank') {
-        ctx.fillStyle = 'rgba(120, 160, 255, 0.85)';
-        ctx.strokeStyle = 'rgba(230, 240, 255, 0.9)';
-        ctx.lineWidth = 2;
-        ctx.fillRect(x + inset, y + inset + box * 0.18, box, box * 0.55);
-        ctx.strokeRect(x + inset, y + inset + box * 0.18, box, box * 0.55);
-        ctx.fillRect(x + inset + box * 0.32, y + inset, box * 0.22, box * 0.28);
-      } else {
-        ctx.fillStyle = 'rgba(255, 196, 120, 0.9)';
-        ctx.strokeStyle = 'rgba(255, 244, 220, 0.95)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(x + size / 2, y + size / 2, box * 0.34, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + size / 2, y + size * 0.22);
-        ctx.lineTo(x + size / 2, y + size * 0.78);
-        ctx.stroke();
-      }
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function worldToScreen(wx, wy) {
+      return {
+        x: (wx * TILE_SIZE + state.camera.x) * state.camera.zoom,
+        y: (wy * TILE_SIZE + state.camera.y) * state.camera.zoom
+      };
     }
 
-    function drawUnits() {
-      for (const unit of state.units) {
-        const p = worldToScreen(unit.x, unit.y);
-        const size = state.tileSize;
+    function screenToWorld(sx, sy) {
+      return {
+        x: (sx / state.camera.zoom - state.camera.x) / TILE_SIZE,
+        y: (sy / state.camera.zoom - state.camera.y) / TILE_SIZE
+      };
+    }
 
-        if (assetReady[unit.type]) {
-          ctx.drawImage(unitImages[unit.type], p.x + 2, p.y + 2, size - 4, size - 4);
+    // ==========================================
+    // 4. LINE TRAVERSAL (DDA Grid Interception)
+    // ==========================================
+    function getTraversedTiles(x0, y0, x1, y1) {
+      const tiles = [];
+      let currentX = Math.floor(x0);
+      let currentY = Math.floor(y0);
+      const targetTileX = Math.floor(x1);
+      const targetTileY = Math.floor(y1);
+
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const stepX = dx >= 0 ? 1 : -1;
+      const stepY = dy >= 0 ? 1 : -1;
+
+      let tMaxX = dx !== 0 ? ((currentX + (stepX > 0 ? 1 : 0)) - x0) / dx : Infinity;
+      let tMaxY = dy !== 0 ? ((currentY + (stepY > 0 ? 1 : 0)) - y0) / dy : Infinity;
+
+      const tDeltaX = dx !== 0 ? Math.abs(1 / dx) : Infinity;
+      const tDeltaY = dy !== 0 ? Math.abs(1 / dy) : Infinity;
+
+      tiles.push({ x: currentX, y: currentY });
+
+      while (currentX !== targetTileX || currentY !== targetTileY) {
+        if (tMaxX < tMaxY) {
+          tMaxX += tDeltaX;
+          currentX += stepX;
         } else {
-          drawUnitFallback(unit, p.x, p.y, size);
+          tMaxY += tDeltaY;
+          currentY += stepY;
+        }
+        tiles.push({ x: currentX, y: currentY });
+        if (tiles.length > 200) break;
+      }
+      return tiles;
+    }
+
+    // ==========================================
+    // 5. COMBAT & TANK FIRE CONTROL SYSTEM
+    // ==========================================
+    function updateCombatAndMovement(deltaTime) {
+      state.units.forEach(unit => {
+        if (unit.x !== unit.targetX || unit.y !== unit.targetY) {
+          const dx = unit.targetX - unit.x;
+          const dy = unit.targetY - unit.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < unit.speed) {
+            unit.x = unit.targetX;
+            unit.y = unit.targetY;
+          } else {
+            unit.x += (dx / dist) * unit.speed;
+            unit.y += (dy / dist) * unit.speed;
+          }
+
+          const currentTileX = Math.floor(unit.x);
+          const currentTileY = Math.floor(unit.y);
+
+          state.units.forEach(enemy => {
+            if (enemy.faction !== unit.faction && 
+                Math.floor(enemy.x) === currentTileX && 
+                Math.floor(enemy.y) === currentTileY) {
+              
+              enemy.hp -= unit.meleeDmg * (deltaTime / 1000);
+              unit.hp -= enemy.meleeDmg * (deltaTime / 1000);
+            }
+          });
+        }
+
+        if (unit.type === 'tank' && unit.fireControl !== 'hold_fire') {
+          unit.cannonCooldown += deltaTime;
+          if (unit.cannonCooldown >= 10000) {
+            const target = findTankTarget(unit);
+            if (target) {
+              target.hp -= unit.cannonDmg;
+              unit.cannonCooldown = 0;
+              drawCannonEffect(unit, target);
+            }
+          }
+        }
+      });
+
+      state.units = state.units.filter(u => u.hp > 0);
+      state.buildings = state.buildings.filter(b => b.hp > 0);
+    }
+
+    function findTankTarget(tank) {
+      const tankTileX = Math.floor(tank.x);
+      const tankTileY = Math.floor(tank.y);
+      const candidates = [];
+
+      if (tank.fireControl !== 'ignore_infantry') {
+        state.units.forEach(u => {
+          if (u.faction !== tank.faction) {
+            const ux = Math.floor(u.x);
+            const uy = Math.floor(u.y);
+            if (Math.abs(ux - tankTileX) <= 1 && Math.abs(uy - tankTileY) <= 1) {
+              candidates.push({ entity: u, type: 'unit' });
+            }
+          }
+        });
+      }
+
+      if (tank.fireControl !== 'ignore_buildings') {
+        state.buildings.forEach(b => {
+          if (b.faction !== tank.faction) {
+            if (Math.abs(b.tileX - tankTileX) <= 1 && Math.abs(b.tileY - tankTileY) <= 1) {
+              candidates.push({ entity: b, type: 'building' });
+            }
+          }
+        });
+      }
+
+      if (candidates.length === 0) return null;
+
+      if (tank.fireControl === 'prioritize_buildings') {
+        const building = candidates.find(c => c.type === 'building');
+        if (building) return building.entity;
+      }
+
+      return candidates[0].entity;
+    }
+
+    let shotFlares = [];
+    function drawCannonEffect(from, to) {
+      const startX = from.x + 0.5;
+      const startY = from.y + 0.5;
+      const endX = (to.x !== undefined ? to.x : to.tileX) + 0.5;
+      const endY = (to.y !== undefined ? to.y : to.tileY) + 0.5;
+      
+      shotFlares.push({
+        x1: startX, y1: startY,
+        x2: endX, y2: endY,
+        life: 1.0
+      });
+    }
+
+    // ==========================================
+    // 6. ECONOMY & TIME TICK
+    // ==========================================
+    setInterval(() => {
+      let miners = 0;
+      state.buildings.forEach(b => {
+        if (b.type === 'mine') miners += b.assignedCivilians;
+      });
+
+      state.resources += miners * (1 / 60);
+
+      let cap = 20;
+      state.buildings.forEach(b => {
+        if (b.type === 'residence') cap += b.capBonus;
+      });
+      state.civilianCap = cap;
+
+      updateUI();
+    }, TICK_RATE);
+
+    // ==========================================
+    // 7. INPUT HANDLING & CAMERA DRAG
+    // ==========================================
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        const world = screenToWorld(e.clientX, e.clientY);
+        const tileX = Math.floor(world.x);
+        const tileY = Math.floor(world.y);
+
+        if (state.buildMode) {
+          placeBuilding(state.buildMode, tileX, tileY);
+          state.buildMode = null;
+          return;
+        }
+
+        const clickedUnit = state.units.find(u => Math.hypot(u.x - world.x, u.y - world.y) < 0.6);
+        if (clickedUnit) {
+          state.selectedEntityId = clickedUnit.id;
+        } else {
+          const clickedBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
+          state.selectedEntityId = clickedBuilding ? clickedBuilding.id : null;
+        }
+        updateUI();
+
+      } else if (e.button === 2 || e.button === 1) {
+        if (e.button === 2) {
+          const selected = getSelectedEntity();
+          if (selected && selected.entityType === 'unit') {
+            const world = screenToWorld(e.clientX, e.clientY);
+            selected.targetX = world.x;
+            selected.targetY = world.y;
+          }
+        }
+        
+        state.camera.isDragging = true;
+        state.camera.dragStart = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const world = screenToWorld(e.clientX, e.clientY);
+      state.hoveredTile = { x: Math.floor(world.x), y: Math.floor(world.y) };
+
+      if (state.camera.isDragging) {
+        const dx = e.clientX - state.camera.dragStart.x;
+        const dy = e.clientY - state.camera.dragStart.y;
+        state.camera.x += dx / state.camera.zoom;
+        state.camera.y += dy / state.camera.zoom;
+        state.camera.dragStart = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      state.camera.isDragging = false;
+    });
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      state.camera.zoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+    });
+
+    // ==========================================
+    // 8. ACTIONS & COMMANDS
+    // ==========================================
+    function setBuildMode(structureType) {
+      state.buildMode = structureType;
+    }
+
+    function placeBuilding(type, tileX, tileY) {
+      const costs = { mine: 50, residence: 100, barracks: 200, armory: 500, radar: 250 };
+      const cost = costs[type];
+
+      if (state.resources < cost) {
+        alert("Not enough resources!");
+        return;
+      }
+
+      const occupied = state.buildings.some(b => b.tileX === tileX && b.tileY === tileY);
+      if (occupied) return;
+
+      state.resources -= cost;
+      state.buildings.push(createBuilding(type, tileX, tileY, 'blue'));
+      updateUI();
+    }
+
+    function assignCivilian(mineBuilding, count) {
+      const unassigned = getUnassignedCivilians();
+      if (count > 0 && unassigned <= 0) return;
+      if (count < 0 && mineBuilding.assignedCivilians <= 0) return;
+
+      mineBuilding.assignedCivilians += count;
+      updateUI();
+    }
+
+    function trainUnit(building, unitType) {
+      const cost = unitType === 'soldier' ? 50 : 300;
+      const unassigned = getUnassignedCivilians();
+
+      if (unassigned < 1) {
+        alert("Requires 1 free civilian!");
+        return;
+      }
+      if (state.resources < cost) {
+        alert("Not enough resources!");
+        return;
+      }
+
+      state.resources -= cost;
+      const spawnX = building.tileX + 1;
+      const spawnY = building.tileY;
+      state.units.push(createUnit(unitType, spawnX, spawnY, 'blue'));
+      updateUI();
+    }
+
+    function setFireControl(tankUnit, mode) {
+      tankUnit.fireControl = mode;
+      updateUI();
+    }
+
+    function getSelectedEntity() {
+      if (!state.selectedEntityId) return null;
+      return state.units.find(u => u.id === state.selectedEntityId) ||
+             state.buildings.find(b => b.id === state.selectedEntityId);
+    }
+
+    function getUnassignedCivilians() {
+      let assigned = 0;
+      state.buildings.forEach(b => assigned += (b.assignedCivilians || 0));
+      return state.civilians - assigned;
+    }
+
+    // ==========================================
+    // 9. RENDER PIPELINE
+    // ==========================================
+    function render() {
+      ctx.fillStyle = '#080b10';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.scale(state.camera.zoom, state.camera.zoom);
+
+      const startTileX = Math.floor(-state.camera.x / TILE_SIZE);
+      const startTileY = Math.floor(-state.camera.y / TILE_SIZE);
+      const endTileX = startTileX + Math.ceil(canvas.width / (TILE_SIZE * state.camera.zoom)) + 1;
+      const endTileY = startTileY + Math.ceil(canvas.height / (TILE_SIZE * state.camera.zoom)) + 1;
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.lineWidth = 1;
+
+      for (let x = startTileX; x < endTileX; x++) {
+        const sx = x * TILE_SIZE + state.camera.x;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, canvas.height / state.camera.zoom);
+        ctx.stroke();
+      }
+      for (let y = startTileY; y < endTileY; y++) {
+        const sy = y * TILE_SIZE + state.camera.y;
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(canvas.width / state.camera.zoom, sy);
+        ctx.stroke();
+      }
+
+      state.buildings.forEach(b => {
+        const px = b.tileX * TILE_SIZE + state.camera.x;
+        const py = b.tileY * TILE_SIZE + state.camera.y;
+
+        if (b.type === 'mine' && IMAGES.mine) {
+          ctx.drawImage(IMAGES.mine, px, py, TILE_SIZE, TILE_SIZE);
+        } else {
+          ctx.fillStyle = b.type === 'mine' ? '#3b82f6' : 
+                          b.type === 'residence' ? '#10b981' : 
+                          b.type === 'barracks' ? '#f59e0b' : '#8b5cf6';
+          ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+        }
+
+        if (b.id === state.selectedEntityId) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+        }
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(b.type.toUpperCase(), px + 6, py + 16);
+      });
+
+      state.units.forEach(u => {
+        if (u.x !== u.targetX || u.y !== u.targetY) {
+          const startX = u.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
+          const startY = u.y * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
+          const endX = u.targetX * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
+          const endY = u.targetY * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
+
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+
+      state.units.forEach(u => {
+        const px = u.x * TILE_SIZE + state.camera.x;
+        const py = u.y * TILE_SIZE + state.camera.y;
+
+        const assetKey = u.type === 'tank' ? 'tank' : 'soldier';
+        if (IMAGES[assetKey]) {
+          ctx.drawImage(IMAGES[assetKey], px, py, TILE_SIZE, TILE_SIZE);
+        } else {
+          ctx.fillStyle = u.type === 'tank' ? '#ef4444' : '#f97316';
+          ctx.beginPath();
+          ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, u.type === 'tank' ? 18 : 10, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (u.id === state.selectedEntityId) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 22, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(px + 8, py - 6, TILE_SIZE - 16, 4);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(px + 8, py - 6, (TILE_SIZE - 16) * (u.hp / u.maxHp), 4);
+      });
+
+      shotFlares.forEach((flare, idx) => {
+        ctx.strokeStyle = `rgba(251, 146, 60, ${flare.life})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(flare.x1 * TILE_SIZE + state.camera.x, flare.y1 * TILE_SIZE + state.camera.y);
+        ctx.lineTo(flare.x2 * TILE_SIZE + state.camera.x, flare.y2 * TILE_SIZE + state.camera.y);
+        ctx.stroke();
+        flare.life -= 0.05;
+      });
+      shotFlares = shotFlares.filter(f => f.life > 0);
+
+      const hx = state.hoveredTile.x * TILE_SIZE + state.camera.x;
+      const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
+      ctx.strokeStyle = state.buildMode ? '#22c55e' : 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+
+      ctx.restore();
+    }
+
+    let lastTime = performance.now();
+    function gameLoop(now) {
+      const deltaTime = now - lastTime;
+      lastTime = now;
+
+      updateCombatAndMovement(deltaTime);
+      render();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ==========================================
+    // 10. UI UPDATER
+    // ==========================================
+    function updateUI() {
+      document.getElementById('ui-resources').innerText = Math.floor(state.resources);
+      document.getElementById('ui-civilians').innerText = `${state.civilians} / ${state.civilianCap}`;
+      
+      let totalMiners = 0;
+      state.buildings.forEach(b => totalMiners += (b.assignedCivilians || 0));
+      document.getElementById('ui-miners').innerText = totalMiners;
+
+      const soldierCount = state.units.filter(u => u.type === 'soldier').length;
+      const tankCount = state.units.filter(u => u.type === 'tank').length;
+      document.getElementById('ui-military').innerText = `${tankCount} / ${soldierCount}`;
+
+      const entity = getSelectedEntity();
+      const titleEl = document.getElementById('inspector-title');
+      const detailsEl = document.getElementById('inspector-details');
+      const actionsEl = document.getElementById('inspector-actions');
+      actionsEl.innerHTML = '';
+
+      if (!entity) {
+        titleEl.innerText = 'Selection: None';
+        detailsEl.innerText = 'Click a unit or building to inspect. Right-click to issue move orders.';
+        return;
+      }
+
+      if (entity.entityType === 'unit') {
+        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
+        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Position: (${entity.x.toFixed(1)}, ${entity.y.toFixed(1)})`;
+
+        if (entity.type === 'tank') {
+          detailsEl.innerText += ` | Cannon DPS: 0.5`;
+          
+          const modes = ['aggressive', 'ignore_infantry', 'ignore_buildings', 'prioritize_buildings', 'hold_fire'];
+          modes.forEach(mode => {
+            const btn = document.createElement('button');
+            btn.className = `fc-btn ${entity.fireControl === mode ? 'active-mode' : ''}`;
+            btn.innerText = mode.replace('_', ' ');
+            btn.onclick = () => setFireControl(entity, mode);
+            actionsEl.appendChild(btn);
+          });
+        }
+      } else if (entity.entityType === 'building') {
+        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
+        detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp}`;
+
+        if (entity.type === 'mine') {
+          detailsEl.innerText += ` | Assigned Miners: ${entity.assignedCivilians}`;
+          
+          const addBtn = document.createElement('button');
+          addBtn.innerText = '+ Assign Miner';
+          addBtn.onclick = () => assignCivilian(entity, 1);
+          
+          const remBtn = document.createElement('button');
+          remBtn.innerText = '- Unassign';
+          remBtn.onclick = () => assignCivilian(entity, -1);
+          
+          actionsEl.appendChild(addBtn);
+          actionsEl.appendChild(remBtn);
+        } else if (entity.type === 'barracks') {
+          const trainBtn = document.createElement('button');
+          trainBtn.innerText = 'Train Soldier (50g + 1 Civ)';
+          trainBtn.onclick = () => trainUnit(entity, 'soldier');
+          actionsEl.appendChild(trainBtn);
+        } else if (entity.type === 'armory') {
+          const trainBtn = document.createElement('button');
+          trainBtn.innerText = 'Train Tank (300g + 1 Civ)';
+          trainBtn.onclick = () => trainUnit(entity, 'tank');
+          actionsEl.appendChild(trainBtn);
         }
       }
     }
 
-    function drawCenterCrosshair() {
-      const cx = state.width / 2;
-      const cy = state.height / 2;
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx - 8, cy);
-      ctx.lineTo(cx + 8, cy);
-      ctx.moveTo(cx, cy - 8);
-      ctx.lineTo(cx, cy + 8);
-      ctx.stroke();
-    }
-
-    function draw() {
-      drawGrid();
-      drawUnits();
-      drawHover();
-      drawMarker();
-      drawCenterCrosshair();
-    }
-
-    function updateHUD(mouseX, mouseY) {
-      const tile = tileFromScreen(mouseX, mouseY);
-      state.hover = tile;
-      cursorEl.textContent = `X: ${tile.tx}, Y: ${tile.ty}`;
-      zoomEl.textContent = `${Math.round((state.tileSize / 48) * 100)}%`;
-      originEl.textContent = `${state.cameraX.toFixed(2)}, ${state.cameraY.toFixed(2)}`;
-      tileInfoEl.textContent = `Tile: (${tile.tx}, ${tile.ty})`;
-    }
-
-    canvas.addEventListener('mousedown', (e) => {
-      state.dragging = true;
-      state.lastMouseX = e.clientX;
-      state.lastMouseY = e.clientY;
-    });
-
-    window.addEventListener('mouseup', () => {
-      state.dragging = false;
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      updateHUD(e.clientX, e.clientY);
-      if (state.dragging) {
-        const dx = e.clientX - state.lastMouseX;
-        const dy = e.clientY - state.lastMouseY;
-        state.cameraX -= dx / state.tileSize;
-        state.cameraY -= dy / state.tileSize;
-        state.lastMouseX = e.clientX;
-        state.lastMouseY = e.clientY;
-        draw();
-      } else {
-        draw();
-      }
-    });
-
-    canvas.addEventListener('click', (e) => {
-      const tile = tileFromScreen(e.clientX, e.clientY);
-      state.marker = tile;
-      draw();
-    });
-
-    canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const oldSize = state.tileSize;
-      const direction = Math.sign(e.deltaY);
-      const factor = direction > 0 ? 0.9 : 1.1;
-      state.tileSize = Math.max(state.minTile, Math.min(state.maxTile, state.tileSize * factor));
-
-      // Keep the tile under the mouse stable while zooming.
-      const before = screenToWorld(e.clientX, e.clientY);
-      const after = screenToWorld(e.clientX, e.clientY);
-      state.cameraX += before.x - after.x;
-      state.cameraY += before.y - after.y;
-
-      zoomEl.textContent = `${Math.round((state.tileSize / 48) * 100)}%`;
-      draw();
-    }, { passive: false });
-
-    window.addEventListener('resize', resize);
-
-    unitImages.tank.onload = () => { assetReady.tank = true; draw(); };
-    unitImages.soldier.onload = () => { assetReady.soldier = true; draw(); };
-    unitImages.tank.onerror = () => { assetReady.tank = false; draw(); };
-    unitImages.soldier.onerror = () => { assetReady.soldier = false; draw(); };
-    unitImages.tank.src = ASSETS.tank;
-    unitImages.soldier.src = ASSETS.soldier;
-
-    // Seed the view with a small offset so the origin is visible.
-    state.cameraX = -2;
-    state.cameraY = -1;
-
-    resize();
+    initGame();
+    requestAnimationFrame(gameLoop);
   </script>
 </body>
 </html>

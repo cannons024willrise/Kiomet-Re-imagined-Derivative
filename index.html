@@ -221,7 +221,8 @@
     const ASSETS = {
       tank: "tank.webp",
       soldier: "soldier.webp",
-      mine: "mine.webp"
+      mine: "mine.webp",
+      residence: "residence.webp"
     };
 
     const IMAGES = {};
@@ -684,6 +685,8 @@
 
         if (b.type === 'mine' && IMAGES.mine) {
           ctx.drawImage(IMAGES.mine, px, py, TILE_SIZE, TILE_SIZE);
+        } else if (b.type === 'residence' && IMAGES.residence) {
+          ctx.drawImage(IMAGES.residence, px, py, TILE_SIZE, TILE_SIZE);
         } else {
           ctx.fillStyle = b.type === 'mine' ? '#3b82f6' : 
                           b.type === 'residence' ? '#10b981' : 

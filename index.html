@@ -178,6 +178,49 @@
       font-size: 10px;
       margin-left: 4px;
     }
+
+    /* Modal Dialog Styling */
+    dialog {
+      pointer-events: auto;
+      background: rgba(13, 17, 23, 0.95);
+      border: 1px solid #38bdf8;
+      border-radius: 8px;
+      color: #e2e8f0;
+      padding: 20px 24px;
+      min-width: 320px;
+      max-width: 450px;
+      margin: auto;
+      box-shadow: 0 0 32px rgba(56, 189, 248, 0.25);
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+    }
+
+    .dialog-title {
+      font-size: 15px;
+      color: #38bdf8;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+      padding-bottom: 6px;
+    }
+
+    .dialog-body {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 18px;
+      line-height: 1.4;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
   </style>
 </head>
 <body>
@@ -233,6 +276,15 @@
     </div>
   </div>
 
+  <!-- HTML Sci-Fi Modal Dialog -->
+  <dialog id="game-modal">
+    <div class="dialog-title" id="modal-title">System Message</div>
+    <div class="dialog-body" id="modal-body">Message details...</div>
+    <div class="dialog-actions" id="modal-actions">
+      <button onclick="closeDialog()">OK</button>
+    </div>
+  </dialog>
+
   <script>
     // ==========================================
     // 1. CONFIGURATION & ASSETS
@@ -284,6 +336,35 @@
 
     loadAssets();
 
+    // Dialog Utility System
+    function showDialog(title, text, actions = []) {
+      const dialog = document.getElementById('game-modal');
+      document.getElementById('modal-title').innerText = title;
+      document.getElementById('modal-body').innerText = text;
+      const actionsEl = document.getElementById('modal-actions');
+      actionsEl.innerHTML = '';
+
+      if (actions.length === 0) {
+        actions.push({ label: 'OK', onClick: () => {} });
+      }
+
+      actions.forEach(action => {
+        const btn = document.createElement('button');
+        btn.innerText = action.label;
+        btn.onclick = () => {
+          if (action.onClick) action.onClick();
+          dialog.close();
+        };
+        actionsEl.appendChild(btn);
+      });
+
+      dialog.showModal();
+    }
+
+    function closeDialog() {
+      document.getElementById('game-modal').close();
+    }
+
     // ==========================================
     // 2. STATE MANAGEMENT
     // ==========================================
@@ -314,17 +395,19 @@
       playerFaction: 'blue'
     };
 
-    // Initialize Default Buildings & Naturally Generated Procedural Mines
+    // Initialize Default Buildings & Civilians inside Residence
     function initGame() {
       // Starting Residences
-      state.buildings.push(createBuilding('residence', 2, 2, 'blue'));
-      state.buildings.push(createBuilding('residence', 4, 2, 'blue'));
+      const res1 = createBuilding('residence', 2, 2, 'blue');
+      const res2 = createBuilding('residence', 4, 2, 'blue');
+      state.buildings.push(res1, res2);
 
-      // Spawn initial 15 Civilian Units on the map around the starting base
+      // Start all 15 initial Civilians housed directly inside the starting Residences
       for (let i = 0; i < 15; i++) {
-        const cx = 2 + (i % 4) * 0.8;
-        const cy = 3 + Math.floor(i / 4) * 0.8;
-        state.units.push(createUnit('civilian', cx, cy, 'blue'));
+        const targetRes = (i < 10) ? res1 : res2;
+        const civ = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
+        civ.housedInResidenceId = targetRes.id;
+        state.units.push(civ);
       }
 
       // Procedurally / Naturally Generated Mines across the map
@@ -357,15 +440,18 @@
     function createUnit(type, x, y, faction = 'blue') {
       const isTank = type === 'tank';
       const isCivilian = type === 'civilian';
+      const tileX = Math.floor(x);
+      const tileY = Math.floor(y);
+
       return {
         id: idCounter++,
         entityType: 'unit',
         type: type, // 'soldier' | 'tank' | 'civilian'
         faction: faction,
-        x: x, // Grid continuous floats
-        y: y,
-        targetX: x,
-        targetY: y,
+        x: tileX, // Perfect integer tile coordinate
+        y: tileY,
+        targetX: tileX,
+        targetY: tileY,
         hp: isTank ? 10 : 1,
         maxHp: isTank ? 10 : 1,
         speed: isTank ? 0.015 : (isCivilian ? 0.02 : 0.025), // Tiles per tick frame
@@ -375,9 +461,11 @@
         cannonCooldown: 0, // Tick counter (10s = 10000ms)
         fireControl: 'aggressive', // 'aggressive' | 'ignore_infantry' | 'ignore_buildings' | 'prioritize_buildings' | 'hold_fire'
         selected: false,
-        // Civilian Mine Mechanics
+        // Civilian Mine & Residence Mechanics
         assignedMineId: null,
-        targetMineId: null
+        targetMineId: null,
+        housedInResidenceId: null,
+        targetResidenceId: null
       };
     }
 
@@ -472,6 +560,9 @@
     // ==========================================
     function updateCombatAndMovement(deltaTime) {
       state.units.forEach(unit => {
+        // Skip movement processing for garrisoned/housed civilians
+        if (unit.housedInResidenceId) return;
+
         if (unit.x !== unit.targetX || unit.y !== unit.targetY) {
           const dx = unit.targetX - unit.x;
           const dy = unit.targetY - unit.y;
@@ -480,6 +571,7 @@
           if (dist < unit.speed) {
             unit.x = unit.targetX;
             unit.y = unit.targetY;
+
             // On arriving at a mine target, assign civilian to that mine
             if (unit.type === 'civilian' && unit.targetMineId) {
               const mine = state.buildings.find(b => b.id === unit.targetMineId);
@@ -487,6 +579,19 @@
                 unit.assignedMineId = mine.id;
               }
               unit.targetMineId = null;
+            }
+            // On arriving at a residence target, garrison civilian inside
+            if (unit.type === 'civilian' && unit.targetResidenceId) {
+              const res = state.buildings.find(b => b.id === unit.targetResidenceId);
+              if (res) {
+                const housedCount = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === res.id).length;
+                if (housedCount < res.capBonus) {
+                  unit.housedInResidenceId = res.id;
+                } else {
+                  showDialog("Residence Full", `Residence #${res.id} has reached maximum capacity (${res.capBonus}).`);
+                }
+              }
+              unit.targetResidenceId = null;
             }
           } else {
             unit.x += (dx / dist) * unit.speed;
@@ -497,7 +602,7 @@
           const currentTileY = Math.floor(unit.y);
 
           state.units.forEach(enemy => {
-            if (enemy.faction !== unit.faction && 
+            if (!enemy.housedInResidenceId && enemy.faction !== unit.faction && 
                 Math.floor(enemy.x) === currentTileX && 
                 Math.floor(enemy.y) === currentTileY) {
               
@@ -531,7 +636,7 @@
 
       if (tank.fireControl !== 'ignore_infantry') {
         state.units.forEach(u => {
-          if (u.faction !== tank.faction) {
+          if (!u.housedInResidenceId && u.faction !== tank.faction) {
             const ux = Math.floor(u.x);
             const uy = Math.floor(u.y);
             if (Math.abs(ux - tankTileX) <= 1 && Math.abs(uy - tankTileY) <= 1) {
@@ -563,10 +668,10 @@
 
     let shotFlares = [];
     function drawCannonEffect(from, to) {
-      const startX = from.x + 0.5;
-      const startY = from.y + 0.5;
-      const endX = (to.x !== undefined ? to.x : to.tileX) + 0.5;
-      const endY = (to.y !== undefined ? to.y : to.tileY) + 0.5;
+      const startX = Math.floor(from.x) + 0.5;
+      const startY = Math.floor(from.y) + 0.5;
+      const endX = (to.x !== undefined ? Math.floor(to.x) : to.tileX) + 0.5;
+      const endY = (to.y !== undefined ? Math.floor(to.y) : to.tileY) + 0.5;
       
       shotFlares.push({
         x1: startX, y1: startY,
@@ -605,9 +710,11 @@
         civilianGrowthCounter++;
         if (civilianGrowthCounter >= 5) {
           const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
-          const spawnX = res ? res.tileX + 0.5 : 2.5;
-          const spawnY = res ? res.tileY + 1.5 : 2.5;
-          state.units.push(createUnit('civilian', spawnX, spawnY, 'blue'));
+          const spawnX = res ? res.tileX : 2;
+          const spawnY = res ? res.tileY + 1 : 2;
+          const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
+          if (res) newCiv.housedInResidenceId = res.id; // Spawns directly inside residence
+          state.units.push(newCiv);
           civilianGrowthCounter = 0;
         }
       } else {
@@ -621,18 +728,19 @@
     // 7. INPUT HANDLING & CAMERA DRAG
     // ==========================================
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) {
-        const world = screenToWorld(e.clientX, e.clientY);
-        const tileX = Math.floor(world.x);
-        const tileY = Math.floor(world.y);
+      const world = screenToWorld(e.clientX, e.clientY);
+      const tileX = Math.floor(world.x);
+      const tileY = Math.floor(world.y);
 
+      if (e.button === 0) {
         if (state.buildMode) {
           placeBuilding(state.buildMode, tileX, tileY);
           state.buildMode = null;
           return;
         }
 
-        const clickedUnit = state.units.find(u => Math.hypot(u.x - world.x, u.y - world.y) < 0.6);
+        // Perfect tile unit selection
+        const clickedUnit = state.units.find(u => !u.housedInResidenceId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
         if (clickedUnit) {
           state.selectedEntityId = clickedUnit.id;
         } else {
@@ -644,21 +752,26 @@
       } else if (e.button === 2 || e.button === 1) {
         if (e.button === 2) {
           const selected = getSelectedEntity();
-          if (selected && selected.entityType === 'unit') {
-            const world = screenToWorld(e.clientX, e.clientY);
-            const tileX = Math.floor(world.x);
-            const tileY = Math.floor(world.y);
-
-            selected.targetX = world.x;
-            selected.targetY = world.y;
+          if (selected && selected.entityType === 'unit' && !selected.housedInResidenceId) {
+            // Target coordinates locked to perfect tile grid positions
+            selected.targetX = tileX;
+            selected.targetY = tileY;
 
             if (selected.type === 'civilian') {
               const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === tileX && b.tileY === tileY);
+              const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === tileX && b.tileY === tileY);
+
               if (targetMine) {
                 selected.targetMineId = targetMine.id;
+                selected.targetResidenceId = null;
+              } else if (targetRes) {
+                selected.targetResidenceId = targetRes.id;
+                selected.targetMineId = null;
+                selected.assignedMineId = null;
               } else {
                 selected.targetMineId = null;
                 selected.assignedMineId = null; // Leaving mine work
+                selected.targetResidenceId = null;
               }
             }
           }
@@ -706,7 +819,7 @@
       const cost = costs[type];
 
       if (state.resources < cost) {
-        alert("Not enough resources!");
+        showDialog("Resource Deficit", `Insufficient resources to construct ${type.toUpperCase()}. Required: ${cost}g.`);
         return;
       }
 
@@ -720,24 +833,94 @@
 
     function trainUnit(building, unitType) {
       const cost = unitType === 'soldier' ? 50 : 300;
-      const unassignedCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null);
+      const unassignedCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null);
 
       if (unassignedCivIdx === -1) {
-        alert("Requires 1 unassigned civilian on the map!");
+        showDialog("Recruitment Error", "Requires 1 unassigned civilian deployed on the grid!");
         return;
       }
       if (state.resources < cost) {
-        alert("Not enough resources!");
+        showDialog("Resource Deficit", `Insufficient resources to train ${unitType.toUpperCase()}. Required: ${cost}g.`);
         return;
       }
 
       state.resources -= cost;
-      // Consume 1 free civilian unit
+      // Consume 1 free civilian unit from map
       state.units.splice(unassignedCivIdx, 1);
 
       const spawnX = building.tileX + 1;
       const spawnY = building.tileY;
       state.units.push(createUnit(unitType, spawnX, spawnY, 'blue'));
+      updateUI();
+    }
+
+    // Interactive Building Movement Options Dialog
+    function openResidenceDialog(residence) {
+      const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === residence.id);
+      const dialog = document.getElementById('game-modal');
+      
+      document.getElementById('modal-title').innerText = `Residence #${residence.id} - Movement Options`;
+      
+      const maxCount = housedCivs.length;
+      
+      if (maxCount === 0) {
+        document.getElementById('modal-body').innerHTML = `<p>No civilians currently housed in this Residence.</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      document.getElementById('modal-body').innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <p>Housed Civilians: <strong style="color:#38bdf8">${maxCount} / ${residence.capBonus}</strong></p>
+          <label style="font-size: 12px; color: #94a3b8;">Select number of civilians to deploy from building:</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="range" id="deploy-range" min="1" max="${maxCount}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
+            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxCount}); document.getElementById('range-val').innerText=Math.min(5, ${maxCount});">5</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxCount}; document.getElementById('range-val').innerText=${maxCount};">Max (${maxCount})</button>
+          </div>
+        </div>
+      `;
+
+      const actionsEl = document.getElementById('modal-actions');
+      actionsEl.innerHTML = '';
+
+      const sendBtn = document.createElement('button');
+      sendBtn.innerText = 'Send / Deploy';
+      sendBtn.onclick = () => {
+        const count = parseInt(document.getElementById('deploy-range').value, 10);
+        deployCivilianFromResidence(residence, count);
+        dialog.close();
+      };
+
+      const closeBtn = document.createElement('button');
+      closeBtn.innerText = 'Cancel';
+      closeBtn.onclick = () => dialog.close();
+
+      actionsEl.appendChild(sendBtn);
+      actionsEl.appendChild(closeBtn);
+
+      dialog.showModal();
+    }
+
+    function deployCivilianFromResidence(residence, count) {
+      const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === residence.id);
+      const deployCount = Math.min(count, housedCivs.length);
+
+      for (let i = 0; i < deployCount; i++) {
+        const civ = housedCivs[i];
+        civ.housedInResidenceId = null;
+        // Deploy to perfect tile grid positions adjacent to residence
+        civ.x = residence.tileX + (i % 2);
+        civ.y = residence.tileY + 1 + Math.floor(i / 2);
+        civ.targetX = civ.x;
+        civ.targetY = civ.y;
+      }
       updateUI();
     }
 
@@ -750,27 +933,6 @@
       if (!state.selectedEntityId) return null;
       return state.units.find(u => u.id === state.selectedEntityId) ||
              state.buildings.find(b => b.id === state.selectedEntityId);
-    }
-
-    function getUnassignedCivilians() {
-      return state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
-    }
-
-    function getResidenceCivilians(resBuilding) {
-      if (resBuilding.type !== 'residence') return 0;
-      let civsLeft = state.units.filter(u => u.type === 'civilian').length;
-      let residences = state.buildings.filter(b => b.type === 'residence');
-      residences.sort((a, b) => a.id - b.id);
-      
-      for (let r of residences) {
-        let capacity = r.capBonus || 10;
-        let assigned = Math.min(capacity, Math.max(0, civsLeft));
-        civsLeft -= assigned;
-        if (r.id === resBuilding.id) {
-          return assigned;
-        }
-      }
-      return 0;
     }
 
     // ==========================================
@@ -839,7 +1001,7 @@
         ctx.fillText(b.type.toUpperCase(), px + 6, py + 16);
 
         if (b.type === 'residence') {
-          const housed = getResidenceCivilians(b);
+          const housed = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === b.id).length;
           ctx.fillText(`Civ: ${housed}/${b.capBonus}`, px + 6, py + 28);
         } else if (b.type === 'mine') {
           const miners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === b.id).length;
@@ -848,6 +1010,8 @@
       });
 
       state.units.forEach(u => {
+        if (u.housedInResidenceId) return; // Hidden while inside residence
+
         if (u.x !== u.targetX || u.y !== u.targetY) {
           const startX = u.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
           const startY = u.y * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
@@ -866,6 +1030,8 @@
       });
 
       state.units.forEach(u => {
+        if (u.housedInResidenceId) return; // Hidden while inside residence
+
         const px = u.x * TILE_SIZE + state.camera.x;
         const py = u.y * TILE_SIZE + state.camera.y;
 
@@ -896,7 +1062,7 @@
         ctx.fillRect(px + 8, py - 6, (TILE_SIZE - 16) * (u.hp / u.maxHp), 4);
       });
 
-      shotFlares.forEach((flare, idx) => {
+      shotFlares.forEach((flare) => {
         ctx.strokeStyle = `rgba(251, 146, 60, ${flare.life})`;
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -957,7 +1123,7 @@
 
       if (entity.entityType === 'unit') {
         titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
-        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Position: (${entity.x.toFixed(1)}, ${entity.y.toFixed(1)})`;
+        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${Math.floor(entity.x)}, ${Math.floor(entity.y)})`;
 
         if (entity.type === 'civilian') {
           const status = entity.assignedMineId ? `Mining Mine #${entity.assignedMineId}` : 'Idle / Moving';
@@ -982,8 +1148,14 @@
           const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === entity.id).length;
           detailsEl.innerText += ` | Active Miners: ${activeMiners}. (Right-click civilians onto this mine to assign)`;
         } else if (entity.type === 'residence') {
-          const housed = getResidenceCivilians(entity);
-          detailsEl.innerText += ` | Housed Civilians: ${housed} / ${entity.capBonus}`;
+          const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === entity.id).length;
+          detailsEl.innerText += ` | Housed Civilians: ${housedCivs} / ${entity.capBonus}`;
+
+          const resDialogBtn = document.createElement('button');
+          resDialogBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Send / Move Options`;
+          resDialogBtn.onclick = () => openResidenceDialog(entity);
+          actionsEl.appendChild(resDialogBtn);
+
         } else if (entity.type === 'barracks') {
           const trainBtn = document.createElement('button');
           trainBtn.innerHTML = `<img src="${ASSETS.soldier}" /> Train Soldier (50g + 1 Civ)`;

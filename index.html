@@ -100,8 +100,8 @@
     }
 
     #inspector-panel {
-      min-width: 320px;
-      max-width: 420px;
+      min-width: 340px;
+      max-width: 440px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -187,7 +187,7 @@
       border-radius: 8px;
       color: #e2e8f0;
       padding: 20px 24px;
-      min-width: 320px;
+      min-width: 340px;
       max-width: 450px;
       margin: auto;
       box-shadow: 0 0 32px rgba(56, 189, 248, 0.25);
@@ -261,7 +261,7 @@
       <div id="inspector-panel" class="hud-panel">
         <div class="panel-title" id="inspector-title">Selection: None</div>
         <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px;">
-          Click a unit or building to inspect. Right-click to issue move orders.
+          Left-click a unit or residence to select source tile. Right-click grid to select target tile.
         </div>
         <div id="inspector-actions" class="btn-group"></div>
       </div>
@@ -379,6 +379,7 @@
       
       // Interaction State
       selectedEntityId: null,
+      targetTile: null, // Selected target destination tile {x, y}
       hoveredTile: { x: 0, y: 0 },
       buildMode: null, // 'residence', etc.
       
@@ -519,44 +520,7 @@
     }
 
     // ==========================================
-    // 4. LINE TRAVERSAL (DDA Grid Interception)
-    // ==========================================
-    function getTraversedTiles(x0, y0, x1, y1) {
-      const tiles = [];
-      let currentX = Math.floor(x0);
-      let currentY = Math.floor(y0);
-      const targetTileX = Math.floor(x1);
-      const targetTileY = Math.floor(y1);
-
-      const dx = x1 - x0;
-      const dy = y1 - y0;
-      const stepX = dx >= 0 ? 1 : -1;
-      const stepY = dy >= 0 ? 1 : -1;
-
-      let tMaxX = dx !== 0 ? ((currentX + (stepX > 0 ? 1 : 0)) - x0) / dx : Infinity;
-      let tMaxY = dy !== 0 ? ((currentY + (stepY > 0 ? 1 : 0)) - y0) / dy : Infinity;
-
-      const tDeltaX = dx !== 0 ? Math.abs(1 / dx) : Infinity;
-      const tDeltaY = dy !== 0 ? Math.abs(1 / dy) : Infinity;
-
-      tiles.push({ x: currentX, y: currentY });
-
-      while (currentX !== targetTileX || currentY !== targetTileY) {
-        if (tMaxX < tMaxY) {
-          tMaxX += tDeltaX;
-          currentX += stepX;
-        } else {
-          tMaxY += tDeltaY;
-          currentY += stepY;
-        }
-        tiles.push({ x: currentX, y: currentY });
-        if (tiles.length > 200) break;
-      }
-      return tiles;
-    }
-
-    // ==========================================
-    // 5. COMBAT & TANK FIRE CONTROL SYSTEM
+    // 4. COMBAT & MOVEMENT
     // ==========================================
     function updateCombatAndMovement(deltaTime) {
       state.units.forEach(unit => {
@@ -682,11 +646,10 @@
     }
 
     // ==========================================
-    // 6. ECONOMY & TIME TICK
+    // 5. ECONOMY & TIME TICK
     // ==========================================
     let civilianGrowthCounter = 0;
     setInterval(() => {
-      // Calculate miners dynamically based on civilians actively assigned to mines
       let miners = 0;
       state.buildings.forEach(b => {
         if (b.type === 'mine') {
@@ -714,7 +677,7 @@
           const spawnX = res ? res.tileX : 2;
           const spawnY = res ? res.tileY + 1 : 2;
           const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
-          if (res) newCiv.housedInResidenceId = res.id; // Spawns directly inside residence
+          if (res) newCiv.housedInResidenceId = res.id;
           state.units.push(newCiv);
           civilianGrowthCounter = 0;
         }
@@ -726,7 +689,7 @@
     }, TICK_RATE);
 
     // ==========================================
-    // 7. INPUT HANDLING & CAMERA DRAG
+    // 6. INPUT HANDLING & SELECTION
     // ==========================================
     canvas.addEventListener('mousedown', (e) => {
       const world = screenToWorld(e.clientX, e.clientY);
@@ -734,19 +697,18 @@
       const tileY = Math.floor(world.y);
 
       if (e.button === 0) {
+        // Left Click: Source Tile / Entity Selection
         if (state.buildMode) {
           placeBuilding(state.buildMode, tileX, tileY);
           state.buildMode = null;
           return;
         }
 
-        // Multi-unit tile click & selection cycling logic
         const unitsOnTile = state.units.filter(u => !u.housedInResidenceId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
         
         if (unitsOnTile.length > 0) {
           const currIndex = unitsOnTile.findIndex(u => u.id === state.selectedEntityId);
           if (currIndex !== -1) {
-            // Cycle selection to next unit on the same tile
             const nextUnit = unitsOnTile[(currIndex + 1) % unitsOnTile.length];
             state.selectedEntityId = nextUnit.id;
           } else {
@@ -756,33 +718,44 @@
           const clickedBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
           state.selectedEntityId = clickedBuilding ? clickedBuilding.id : null;
         }
+
+        // Reset Target Tile when source selection changes
+        state.targetTile = null;
         updateUI();
 
       } else if (e.button === 2 || e.button === 1) {
+        // Right Click: Select Target Tile
         if (e.button === 2) {
           const selected = getSelectedEntity();
-          if (selected && selected.entityType === 'unit' && !selected.housedInResidenceId) {
-            // Target coordinates locked to perfect tile grid positions
-            selected.targetX = tileX;
-            selected.targetY = tileY;
+          
+          if (selected) {
+            // Set global target tile for chosen source entity
+            state.targetTile = { x: tileX, y: tileY };
 
-            if (selected.type === 'civilian') {
-              const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === tileX && b.tileY === tileY);
-              const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === tileX && b.tileY === tileY);
+            // Direct move command if selected entity is a single deployed unit
+            if (selected.entityType === 'unit' && !selected.housedInResidenceId) {
+              selected.targetX = tileX;
+              selected.targetY = tileY;
 
-              if (targetMine) {
-                selected.targetMineId = targetMine.id;
-                selected.targetResidenceId = null;
-              } else if (targetRes) {
-                selected.targetResidenceId = targetRes.id;
-                selected.targetMineId = null;
-                selected.assignedMineId = null;
-              } else {
-                selected.targetMineId = null;
-                selected.assignedMineId = null; // Leaving mine work
-                selected.targetResidenceId = null;
+              if (selected.type === 'civilian') {
+                const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === tileX && b.tileY === tileY);
+                const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === tileX && b.tileY === tileY);
+
+                if (targetMine) {
+                  selected.targetMineId = targetMine.id;
+                  selected.targetResidenceId = null;
+                } else if (targetRes) {
+                  selected.targetResidenceId = targetRes.id;
+                  selected.targetMineId = null;
+                  selected.assignedMineId = null;
+                } else {
+                  selected.targetMineId = null;
+                  selected.assignedMineId = null;
+                  selected.targetResidenceId = null;
+                }
               }
             }
+            updateUI();
           }
         }
         
@@ -817,7 +790,7 @@
     });
 
     // ==========================================
-    // 8. ACTIONS & COMMANDS
+    // 7. ACTIONS & COMMANDS
     // ==========================================
     function setBuildMode(structureType) {
       state.buildMode = structureType;
@@ -854,7 +827,6 @@
       }
 
       state.resources -= cost;
-      // Consume 1 free civilian unit from map
       state.units.splice(unassignedCivIdx, 1);
 
       const spawnX = building.tileX + 1;
@@ -863,12 +835,17 @@
       updateUI();
     }
 
-    // Interactive Building Movement Options Dialog
+    // Target-Aware Residence Dialog
     function openResidenceDialog(residence) {
+      if (!state.targetTile) {
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before opening Send Options.");
+        return;
+      }
+
       const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === residence.id);
       const dialog = document.getElementById('game-modal');
       
-      document.getElementById('modal-title').innerText = `Residence #${residence.id} - Movement Options`;
+      document.getElementById('modal-title').innerText = `Residence #${residence.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
       
       const maxCount = housedCivs.length;
       
@@ -883,7 +860,8 @@
       document.getElementById('modal-body').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <p>Housed Civilians: <strong style="color:#38bdf8">${maxCount} / ${residence.capBonus}</strong></p>
-          <label style="font-size: 12px; color: #94a3b8;">Select number of civilians to deploy from building:</label>
+          <p style="font-size: 11px; color: #22c55e;">Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
+          <label style="font-size: 12px; color: #94a3b8;">Select number of civilians to send:</label>
           <div style="display: flex; align-items: center; gap: 10px;">
             <input type="range" id="deploy-range" min="1" max="${maxCount}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
             <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
@@ -900,10 +878,10 @@
       actionsEl.innerHTML = '';
 
       const sendBtn = document.createElement('button');
-      sendBtn.innerText = 'Send / Deploy';
+      sendBtn.innerText = 'Confirm Send';
       sendBtn.onclick = () => {
         const count = parseInt(document.getElementById('deploy-range').value, 10);
-        deployCivilianFromResidence(residence, count);
+        deployCivilianFromResidenceToTarget(residence, count, state.targetTile);
         dialog.close();
       };
 
@@ -917,18 +895,32 @@
       dialog.showModal();
     }
 
-    function deployCivilianFromResidence(residence, count) {
+    function deployCivilianFromResidenceToTarget(residence, count, targetTile) {
       const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === residence.id);
       const deployCount = Math.min(count, housedCivs.length);
+
+      const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === targetTile.x && b.tileY === targetTile.y);
+      const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === targetTile.x && b.tileY === targetTile.y);
 
       for (let i = 0; i < deployCount; i++) {
         const civ = housedCivs[i];
         civ.housedInResidenceId = null;
-        // Deploy to perfect tile grid positions adjacent to residence
-        civ.x = residence.tileX + (i % 2);
-        civ.y = residence.tileY + 1 + Math.floor(i / 2);
-        civ.targetX = civ.x;
-        civ.targetY = civ.y;
+        civ.x = residence.tileX;
+        civ.y = residence.tileY;
+        civ.targetX = targetTile.x;
+        civ.targetY = targetTile.y;
+
+        if (targetMine) {
+          civ.targetMineId = targetMine.id;
+          civ.targetResidenceId = null;
+        } else if (targetRes) {
+          civ.targetResidenceId = targetRes.id;
+          civ.targetMineId = null;
+        } else {
+          civ.targetMineId = null;
+          civ.assignedMineId = null;
+          civ.targetResidenceId = null;
+        }
       }
       updateUI();
     }
@@ -945,7 +937,7 @@
     }
 
     // ==========================================
-    // 9. RENDER PIPELINE
+    // 8. RENDER PIPELINE
     // ==========================================
     function render() {
       ctx.fillStyle = '#080b10';
@@ -959,6 +951,7 @@
       const endTileX = startTileX + Math.ceil(canvas.width / (TILE_SIZE * state.camera.zoom)) + 1;
       const endTileY = startTileY + Math.ceil(canvas.height / (TILE_SIZE * state.camera.zoom)) + 1;
 
+      // Draw Grid Lines
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
       ctx.lineWidth = 1;
 
@@ -977,6 +970,32 @@
         ctx.stroke();
       }
 
+      // Draw Source-to-Target Selection Line & Target Marker
+      const selectedEntity = getSelectedEntity();
+      if (selectedEntity && state.targetTile) {
+        const sourceX = (selectedEntity.x !== undefined ? Math.floor(selectedEntity.x) : selectedEntity.tileX) * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
+        const sourceY = (selectedEntity.y !== undefined ? Math.floor(selectedEntity.y) : selectedEntity.tileY) * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
+        const targetX = state.targetTile.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
+        const targetY = state.targetTile.y * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
+
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(sourceX, sourceY);
+        ctx.lineTo(targetX, targetY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Highlight Target Tile Circle Marker
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(targetX, targetY, 18, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Render Buildings
       state.buildings.forEach(b => {
         const px = b.tileX * TILE_SIZE + state.camera.x;
         const py = b.tileY * TILE_SIZE + state.camera.y;
@@ -1018,8 +1037,9 @@
         }
       });
 
+      // Render Active Unit Path Lines
       state.units.forEach(u => {
-        if (u.housedInResidenceId) return; // Hidden while inside residence
+        if (u.housedInResidenceId) return;
 
         if (u.x !== u.targetX || u.y !== u.targetY) {
           const startX = u.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
@@ -1038,7 +1058,7 @@
         }
       });
 
-      // Pass 1: Count units per active tile to offset multiple units visually on the same tile
+      // Pass 1: Multi-unit tile stack count calculation
       const tileUnitCounts = {};
       state.units.forEach(u => {
         if (u.housedInResidenceId) return;
@@ -1056,7 +1076,6 @@
         const idxOnTile = tileUnitIndices[tileKey] || 0;
         tileUnitIndices[tileKey] = idxOnTile + 1;
 
-        // Sub-tile positional offsets when multiple units share the same tile
         let subOffsetX = 0;
         let subOffsetY = 0;
         if (totalOnTile > 1) {
@@ -1096,6 +1115,7 @@
         ctx.fillRect(px + 8, py - 6, (TILE_SIZE - 16) * (u.hp / u.maxHp), 4);
       });
 
+      // Render Cannon Flare Effects
       shotFlares.forEach((flare) => {
         ctx.strokeStyle = `rgba(251, 146, 60, ${flare.life})`;
         ctx.lineWidth = 3;
@@ -1107,6 +1127,7 @@
       });
       shotFlares = shotFlares.filter(f => f.life > 0);
 
+      // Render Tile Hover Highlight
       const hx = state.hoveredTile.x * TILE_SIZE + state.camera.x;
       const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
       ctx.strokeStyle = state.buildMode ? '#22c55e' : 'rgba(255, 255, 255, 0.15)';
@@ -1128,7 +1149,7 @@
     }
 
     // ==========================================
-    // 10. UI UPDATER
+    // 9. UI UPDATER
     // ==========================================
     function updateUI() {
       document.getElementById('ui-resources').innerText = Math.floor(state.resources);
@@ -1151,9 +1172,11 @@
 
       if (!entity) {
         titleEl.innerText = 'Selection: None';
-        detailsEl.innerText = 'Click a unit or building to inspect. Right-click to issue move orders.';
+        detailsEl.innerText = 'Left-click a unit or residence to select source tile. Right-click grid to select target tile.';
         return;
       }
+
+      const targetText = state.targetTile ? ` | Target: (${state.targetTile.x}, ${state.targetTile.y})` : ' | Target: None (Right-click grid)';
 
       if (entity.entityType === 'unit') {
         const uTileX = Math.floor(entity.x);
@@ -1161,10 +1184,10 @@
         const unitsOnSameTile = state.units.filter(u => !u.housedInResidenceId && Math.floor(u.x) === uTileX && Math.floor(u.y) === uTileY);
         const uIdx = unitsOnSameTile.findIndex(u => u.id === entity.id) + 1;
         
-        const stackText = unitsOnSameTile.length > 1 ? ` (${uIdx} of ${unitsOnSameTile.length} on Tile - click to cycle)` : '';
+        const stackText = unitsOnSameTile.length > 1 ? ` (${uIdx} of ${unitsOnSameTile.length} on Tile)` : '';
 
         titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})${stackText}`;
-        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${uTileX}, ${uTileY})`;
+        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${uTileX}, ${uTileY})${targetText}`;
 
         if (entity.type === 'civilian') {
           const status = entity.assignedMineId ? `Mining Mine #${entity.assignedMineId}` : 'Idle / Moving';
@@ -1183,11 +1206,11 @@
         }
       } else if (entity.entityType === 'building') {
         titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
-        detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp}`;
+        detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp}${targetText}`;
 
         if (entity.type === 'mine') {
           const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === entity.id).length;
-          detailsEl.innerText += ` | Active Miners: ${activeMiners}. (Right-click civilians onto this mine to assign)`;
+          detailsEl.innerText += ` | Active Miners: ${activeMiners}.`;
         } else if (entity.type === 'residence') {
           const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === entity.id).length;
           detailsEl.innerText += ` | Housed Civilians: ${housedCivs} / ${entity.capBonus}`;

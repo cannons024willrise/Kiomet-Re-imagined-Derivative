@@ -601,6 +601,7 @@
           const currentTileX = Math.floor(unit.x);
           const currentTileY = Math.floor(unit.y);
 
+          // Support multi-unit combat on the same tile
           state.units.forEach(enemy => {
             if (!enemy.housedInResidenceId && enemy.faction !== unit.faction && 
                 Math.floor(enemy.x) === currentTileX && 
@@ -739,10 +740,18 @@
           return;
         }
 
-        // Perfect tile unit selection
-        const clickedUnit = state.units.find(u => !u.housedInResidenceId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
-        if (clickedUnit) {
-          state.selectedEntityId = clickedUnit.id;
+        // Multi-unit tile click & selection cycling logic
+        const unitsOnTile = state.units.filter(u => !u.housedInResidenceId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
+        
+        if (unitsOnTile.length > 0) {
+          const currIndex = unitsOnTile.findIndex(u => u.id === state.selectedEntityId);
+          if (currIndex !== -1) {
+            // Cycle selection to next unit on the same tile
+            const nextUnit = unitsOnTile[(currIndex + 1) % unitsOnTile.length];
+            state.selectedEntityId = nextUnit.id;
+          } else {
+            state.selectedEntityId = unitsOnTile[0].id;
+          }
         } else {
           const clickedBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
           state.selectedEntityId = clickedBuilding ? clickedBuilding.id : null;
@@ -1029,11 +1038,36 @@
         }
       });
 
+      // Pass 1: Count units per active tile to offset multiple units visually on the same tile
+      const tileUnitCounts = {};
       state.units.forEach(u => {
-        if (u.housedInResidenceId) return; // Hidden while inside residence
+        if (u.housedInResidenceId) return;
+        const key = `${Math.floor(u.x)},${Math.floor(u.y)}`;
+        tileUnitCounts[key] = (tileUnitCounts[key] || 0) + 1;
+      });
 
-        const px = u.x * TILE_SIZE + state.camera.x;
-        const py = u.y * TILE_SIZE + state.camera.y;
+      // Pass 2: Draw multi-occupancy units cleanly spaced inside their tile boundary
+      const tileUnitIndices = {};
+      state.units.forEach(u => {
+        if (u.housedInResidenceId) return;
+
+        const tileKey = `${Math.floor(u.x)},${Math.floor(u.y)}`;
+        const totalOnTile = tileUnitCounts[tileKey];
+        const idxOnTile = tileUnitIndices[tileKey] || 0;
+        tileUnitIndices[tileKey] = idxOnTile + 1;
+
+        // Sub-tile positional offsets when multiple units share the same tile
+        let subOffsetX = 0;
+        let subOffsetY = 0;
+        if (totalOnTile > 1) {
+          const angle = (idxOnTile / totalOnTile) * Math.PI * 2;
+          const radius = Math.min(14, 6 + totalOnTile * 2);
+          subOffsetX = Math.cos(angle) * radius;
+          subOffsetY = Math.sin(angle) * radius;
+        }
+
+        const px = u.x * TILE_SIZE + state.camera.x + subOffsetX;
+        const py = u.y * TILE_SIZE + state.camera.y + subOffsetY;
 
         const assetKey = u.type === 'tank' ? 'tank' : (u.type === 'civilian' ? 'civilian' : 'soldier');
         const img = IMAGES[assetKey];
@@ -1052,7 +1086,7 @@
           ctx.strokeStyle = '#38bdf8';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 22, 0, Math.PI * 2);
+          ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 20, 0, Math.PI * 2);
           ctx.stroke();
         }
 
@@ -1122,8 +1156,15 @@
       }
 
       if (entity.entityType === 'unit') {
-        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
-        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${Math.floor(entity.x)}, ${Math.floor(entity.y)})`;
+        const uTileX = Math.floor(entity.x);
+        const uTileY = Math.floor(entity.y);
+        const unitsOnSameTile = state.units.filter(u => !u.housedInResidenceId && Math.floor(u.x) === uTileX && Math.floor(u.y) === uTileY);
+        const uIdx = unitsOnSameTile.findIndex(u => u.id === entity.id) + 1;
+        
+        const stackText = unitsOnSameTile.length > 1 ? ` (${uIdx} of ${unitsOnSameTile.length} on Tile - click to cycle)` : '';
+
+        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})${stackText}`;
+        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${uTileX}, ${uTileY})`;
 
         if (entity.type === 'civilian') {
           const status = entity.assignedMineId ? `Mining Mine #${entity.assignedMineId}` : 'Idle / Moving';

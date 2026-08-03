@@ -261,7 +261,7 @@
       <div id="inspector-panel" class="hud-panel">
         <div class="panel-title" id="inspector-title">Selection: None</div>
         <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px;">
-          Left-click a unit or residence to select source tile. Right-click grid to select target tile.
+          Left-click a unit or structure to select source tile. Right-click grid to select target tile.
         </div>
         <div id="inspector-actions" class="btn-group"></div>
       </div>
@@ -813,32 +813,135 @@
       updateUI();
     }
 
-    function trainUnit(building, unitType) {
-      const cost = unitType === 'soldier' ? 50 : 300;
-      const unassignedCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null);
+    function trainUnit(building, unitType, count = 1, targetTile = null) {
+      const costPerUnit = unitType === 'soldier' ? 50 : 300;
+      let trainedCount = 0;
 
-      if (unassignedCivIdx === -1) {
-        showDialog("Recruitment Error", "Requires 1 unassigned civilian deployed on the grid!");
-        return;
+      for (let i = 0; i < count; i++) {
+        const unassignedCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null);
+
+        if (unassignedCivIdx === -1) {
+          if (trainedCount === 0) {
+            showDialog("Recruitment Error", "Requires unassigned civilians deployed on the grid!");
+          }
+          break;
+        }
+        if (state.resources < costPerUnit) {
+          if (trainedCount === 0) {
+            showDialog("Resource Deficit", `Insufficient resources to train ${unitType.toUpperCase()}. Required: ${costPerUnit}g per unit.`);
+          }
+          break;
+        }
+
+        state.resources -= costPerUnit;
+        state.units.splice(unassignedCivIdx, 1);
+
+        const spawnX = building.tileX;
+        const spawnY = building.tileY;
+        const newUnit = createUnit(unitType, spawnX, spawnY, 'blue');
+
+        if (targetTile) {
+          newUnit.targetX = targetTile.x;
+          newUnit.targetY = targetTile.y;
+        }
+
+        state.units.push(newUnit);
+        trainedCount++;
       }
-      if (state.resources < cost) {
-        showDialog("Resource Deficit", `Insufficient resources to train ${unitType.toUpperCase()}. Required: ${cost}g.`);
-        return;
-      }
-
-      state.resources -= cost;
-      state.units.splice(unassignedCivIdx, 1);
-
-      const spawnX = building.tileX + 1;
-      const spawnY = building.tileY;
-      state.units.push(createUnit(unitType, spawnX, spawnY, 'blue'));
       updateUI();
     }
 
-    // Target-Aware Residence Dialog
+    // Standardized Target-Aware Dialog for Mine
+    function openMineDialog(mine) {
+      if (!state.targetTile) {
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing send options.");
+        return;
+      }
+
+      const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === mine.id);
+      const dialog = document.getElementById('game-modal');
+      
+      document.getElementById('modal-title').innerText = `Mine #${mine.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
+      
+      const maxCount = activeMiners.length;
+      
+      if (maxCount === 0) {
+        document.getElementById('modal-body').innerHTML = `<p>No active miners currently assigned to this Mine.</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      document.getElementById('modal-body').innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <p>Active Miners: <strong style="color:#38bdf8">${maxCount}</strong></p>
+          <p style="font-size: 11px; color: #22c55e;">Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
+          <label style="font-size: 12px; color: #94a3b8;">Select number of miners to reassign & send:</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="range" id="deploy-range" min="1" max="${maxCount}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
+            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxCount}); document.getElementById('range-val').innerText=Math.min(5, ${maxCount});">5</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxCount}; document.getElementById('range-val').innerText=${maxCount};">Max (${maxCount})</button>
+          </div>
+        </div>
+      `;
+
+      const actionsEl = document.getElementById('modal-actions');
+      actionsEl.innerHTML = '';
+
+      const sendBtn = document.createElement('button');
+      sendBtn.innerText = 'Confirm Send';
+      sendBtn.onclick = () => {
+        const count = parseInt(document.getElementById('deploy-range').value, 10);
+        dispatchMinersFromMineToTarget(mine, count, state.targetTile);
+        dialog.close();
+      };
+
+      const closeBtn = document.createElement('button');
+      closeBtn.innerText = 'Cancel';
+      closeBtn.onclick = () => dialog.close();
+
+      actionsEl.appendChild(sendBtn);
+      actionsEl.appendChild(closeBtn);
+
+      dialog.showModal();
+    }
+
+    function dispatchMinersFromMineToTarget(mine, count, targetTile) {
+      const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === mine.id);
+      const dispatchCount = Math.min(count, activeMiners.length);
+
+      const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === targetTile.x && b.tileY === targetTile.y);
+      const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === targetTile.x && b.tileY === targetTile.y);
+
+      for (let i = 0; i < dispatchCount; i++) {
+        const civ = activeMiners[i];
+        civ.assignedMineId = null; // Unassign from current mine
+        civ.targetX = targetTile.x;
+        civ.targetY = targetTile.y;
+
+        if (targetMine) {
+          civ.targetMineId = targetMine.id;
+          civ.targetResidenceId = null;
+        } else if (targetRes) {
+          civ.targetResidenceId = targetRes.id;
+          civ.targetMineId = null;
+        } else {
+          civ.targetMineId = null;
+          civ.targetResidenceId = null;
+        }
+      }
+      updateUI();
+    }
+
+    // Standardized Target-Aware Dialog for Residence
     function openResidenceDialog(residence) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before opening Send Options.");
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing send options.");
         return;
       }
 
@@ -882,6 +985,128 @@
       sendBtn.onclick = () => {
         const count = parseInt(document.getElementById('deploy-range').value, 10);
         deployCivilianFromResidenceToTarget(residence, count, state.targetTile);
+        dialog.close();
+      };
+
+      const closeBtn = document.createElement('button');
+      closeBtn.innerText = 'Cancel';
+      closeBtn.onclick = () => dialog.close();
+
+      actionsEl.appendChild(sendBtn);
+      actionsEl.appendChild(closeBtn);
+
+      dialog.showModal();
+    }
+
+    // Standardized Target-Aware Dialog for Barracks
+    function openBarracksDialog(barracks) {
+      if (!state.targetTile) {
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
+        return;
+      }
+
+      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null).length;
+      const dialog = document.getElementById('game-modal');
+      
+      document.getElementById('modal-title').innerText = `Barracks #${barracks.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
+      
+      if (availableCivs === 0) {
+        document.getElementById('modal-body').innerHTML = `<p>No unassigned civilians available to convert into Soldiers (Cost: 50g + 1 Civilian each).</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / 50));
+      const maxTrain = Math.max(1, maxAffordable);
+
+      document.getElementById('modal-body').innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <p>Available Civilians: <strong style="color:#38bdf8">${availableCivs}</strong> | Cost: <strong>50g + 1 Civ each</strong></p>
+          <p style="font-size: 11px; color: #22c55e;">Rally Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
+          <label style="font-size: 12px; color: #94a3b8;">Select number of Soldiers to train & rally:</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="range" id="deploy-range" min="1" max="${maxTrain}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
+            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxTrain}); document.getElementById('range-val').innerText=Math.min(5, ${maxTrain});">5</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxTrain}; document.getElementById('range-val').innerText=${maxTrain};">Max (${maxTrain})</button>
+          </div>
+        </div>
+      `;
+
+      const actionsEl = document.getElementById('modal-actions');
+      actionsEl.innerHTML = '';
+
+      const sendBtn = document.createElement('button');
+      sendBtn.innerText = 'Train & Rally';
+      sendBtn.onclick = () => {
+        const count = parseInt(document.getElementById('deploy-range').value, 10);
+        trainUnit(barracks, 'soldier', count, state.targetTile);
+        dialog.close();
+      };
+
+      const closeBtn = document.createElement('button');
+      closeBtn.innerText = 'Cancel';
+      closeBtn.onclick = () => dialog.close();
+
+      actionsEl.appendChild(sendBtn);
+      actionsEl.appendChild(closeBtn);
+
+      dialog.showModal();
+    }
+
+    // Standardized Target-Aware Dialog for Armory
+    function openArmoryDialog(armory) {
+      if (!state.targetTile) {
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
+        return;
+      }
+
+      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null).length;
+      const dialog = document.getElementById('game-modal');
+      
+      document.getElementById('modal-title').innerText = `Armory #${armory.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
+      
+      if (availableCivs === 0) {
+        document.getElementById('modal-body').innerHTML = `<p>No unassigned civilians available to convert into Tanks (Cost: 300g + 1 Civilian each).</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / 300));
+      const maxTrain = Math.max(1, maxAffordable);
+
+      document.getElementById('modal-body').innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <p>Available Civilians: <strong style="color:#38bdf8">${availableCivs}</strong> | Cost: <strong>300g + 1 Civ each</strong></p>
+          <p style="font-size: 11px; color: #22c55e;">Rally Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
+          <label style="font-size: 12px; color: #94a3b8;">Select number of Tanks to train & rally:</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="range" id="deploy-range" min="1" max="${maxTrain}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
+            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxTrain}); document.getElementById('range-val').innerText=Math.min(5, ${maxTrain});">5</button>
+            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxTrain}; document.getElementById('range-val').innerText=${maxTrain};">Max (${maxTrain})</button>
+          </div>
+        </div>
+      `;
+
+      const actionsEl = document.getElementById('modal-actions');
+      actionsEl.innerHTML = '';
+
+      const sendBtn = document.createElement('button');
+      sendBtn.innerText = 'Train & Rally';
+      sendBtn.onclick = () => {
+        const count = parseInt(document.getElementById('deploy-range').value, 10);
+        trainUnit(armory, 'tank', count, state.targetTile);
         dialog.close();
       };
 
@@ -1172,7 +1397,7 @@
 
       if (!entity) {
         titleEl.innerText = 'Selection: None';
-        detailsEl.innerText = 'Left-click a unit or residence to select source tile. Right-click grid to select target tile.';
+        detailsEl.innerText = 'Left-click a unit or structure to select source tile. Right-click grid to select target tile.';
         return;
       }
 
@@ -1210,7 +1435,13 @@
 
         if (entity.type === 'mine') {
           const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === entity.id).length;
-          detailsEl.innerText += ` | Active Miners: ${activeMiners}.`;
+          detailsEl.innerText += ` | Active Miners: ${activeMiners}`;
+
+          const mineDialogBtn = document.createElement('button');
+          mineDialogBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Send / Move Options`;
+          mineDialogBtn.onclick = () => openMineDialog(entity);
+          actionsEl.appendChild(mineDialogBtn);
+
         } else if (entity.type === 'residence') {
           const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === entity.id).length;
           detailsEl.innerText += ` | Housed Civilians: ${housedCivs} / ${entity.capBonus}`;
@@ -1222,13 +1453,14 @@
 
         } else if (entity.type === 'barracks') {
           const trainBtn = document.createElement('button');
-          trainBtn.innerHTML = `<img src="${ASSETS.soldier}" /> Train Soldier (50g + 1 Civ)`;
-          trainBtn.onclick = () => trainUnit(entity, 'soldier');
+          trainBtn.innerHTML = `<img src="${ASSETS.soldier}" /> Train / Rally Options`;
+          trainBtn.onclick = () => openBarracksDialog(entity);
           actionsEl.appendChild(trainBtn);
+
         } else if (entity.type === 'armory') {
           const trainBtn = document.createElement('button');
-          trainBtn.innerHTML = `<img src="${ASSETS.tank}" /> Train Tank (300g + 1 Civ)`;
-          trainBtn.onclick = () => trainUnit(entity, 'tank');
+          trainBtn.innerHTML = `<img src="${ASSETS.tank}" /> Train / Rally Options`;
+          trainBtn.onclick = () => openArmoryDialog(entity);
           actionsEl.appendChild(trainBtn);
         }
       }

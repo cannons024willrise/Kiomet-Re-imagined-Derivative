@@ -320,6 +320,13 @@
       state.buildings.push(createBuilding('residence', 2, 2, 'blue'));
       state.buildings.push(createBuilding('residence', 4, 2, 'blue'));
 
+      // Spawn initial 15 Civilian Units on the map around the starting base
+      for (let i = 0; i < 15; i++) {
+        const cx = 2 + (i % 4) * 0.8;
+        const cy = 3 + Math.floor(i / 4) * 0.8;
+        state.units.push(createUnit('civilian', cx, cy, 'blue'));
+      }
+
       // Procedurally / Naturally Generated Mines across the map
       const numNaturalMines = 7;
       for (let i = 0; i < numNaturalMines; i++) {
@@ -349,10 +356,11 @@
 
     function createUnit(type, x, y, faction = 'blue') {
       const isTank = type === 'tank';
+      const isCivilian = type === 'civilian';
       return {
         id: idCounter++,
         entityType: 'unit',
-        type: type, // 'soldier' | 'tank'
+        type: type, // 'soldier' | 'tank' | 'civilian'
         faction: faction,
         x: x, // Grid continuous floats
         y: y,
@@ -360,13 +368,16 @@
         targetY: y,
         hp: isTank ? 10 : 1,
         maxHp: isTank ? 10 : 1,
-        speed: isTank ? 0.015 : 0.025, // Tiles per tick frame
-        meleeDmg: isTank ? 10 : 1,
+        speed: isTank ? 0.015 : (isCivilian ? 0.02 : 0.025), // Tiles per tick frame
+        meleeDmg: isTank ? 10 : (isCivilian ? 0 : 1),
         // Tank Cannon Mechanics
         cannonDmg: isTank ? 5 : 0,
         cannonCooldown: 0, // Tick counter (10s = 10000ms)
         fireControl: 'aggressive', // 'aggressive' | 'ignore_infantry' | 'ignore_buildings' | 'prioritize_buildings' | 'hold_fire'
-        selected: false
+        selected: false,
+        // Civilian Mine Mechanics
+        assignedMineId: null,
+        targetMineId: null
       };
     }
 
@@ -469,6 +480,14 @@
           if (dist < unit.speed) {
             unit.x = unit.targetX;
             unit.y = unit.targetY;
+            // On arriving at a mine target, assign civilian to that mine
+            if (unit.type === 'civilian' && unit.targetMineId) {
+              const mine = state.buildings.find(b => b.id === unit.targetMineId);
+              if (mine) {
+                unit.assignedMineId = mine.id;
+              }
+              unit.targetMineId = null;
+            }
           } else {
             unit.x += (dx / dist) * unit.speed;
             unit.y += (dy / dist) * unit.speed;
@@ -561,9 +580,14 @@
     // ==========================================
     let civilianGrowthCounter = 0;
     setInterval(() => {
+      // Calculate miners dynamically based on civilians actively assigned to mines
       let miners = 0;
       state.buildings.forEach(b => {
-        if (b.type === 'mine') miners += b.assignedCivilians;
+        if (b.type === 'mine') {
+          const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === b.id).length;
+          b.assignedCivilians = activeMiners;
+          miners += activeMiners;
+        }
       });
 
       state.resources += miners * (1 / 60);
@@ -574,10 +598,16 @@
       });
       state.civilianCap = cap;
 
+      const currentCivilians = state.units.filter(u => u.type === 'civilian').length;
+      state.civilians = currentCivilians;
+
       if (state.civilians < state.civilianCap) {
         civilianGrowthCounter++;
         if (civilianGrowthCounter >= 5) {
-          state.civilians++;
+          const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
+          const spawnX = res ? res.tileX + 0.5 : 2.5;
+          const spawnY = res ? res.tileY + 1.5 : 2.5;
+          state.units.push(createUnit('civilian', spawnX, spawnY, 'blue'));
           civilianGrowthCounter = 0;
         }
       } else {
@@ -616,8 +646,21 @@
           const selected = getSelectedEntity();
           if (selected && selected.entityType === 'unit') {
             const world = screenToWorld(e.clientX, e.clientY);
+            const tileX = Math.floor(world.x);
+            const tileY = Math.floor(world.y);
+
             selected.targetX = world.x;
             selected.targetY = world.y;
+
+            if (selected.type === 'civilian') {
+              const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === tileX && b.tileY === tileY);
+              if (targetMine) {
+                selected.targetMineId = targetMine.id;
+              } else {
+                selected.targetMineId = null;
+                selected.assignedMineId = null; // Leaving mine work
+              }
+            }
           }
         }
         
@@ -675,21 +718,12 @@
       updateUI();
     }
 
-    function assignCivilian(mineBuilding, count) {
-      const unassigned = getUnassignedCivilians();
-      if (count > 0 && unassigned <= 0) return;
-      if (count < 0 && mineBuilding.assignedCivilians <= 0) return;
-
-      mineBuilding.assignedCivilians += count;
-      updateUI();
-    }
-
     function trainUnit(building, unitType) {
       const cost = unitType === 'soldier' ? 50 : 300;
-      const unassigned = getUnassignedCivilians();
+      const unassignedCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null);
 
-      if (unassigned < 1) {
-        alert("Requires 1 free civilian!");
+      if (unassignedCivIdx === -1) {
+        alert("Requires 1 unassigned civilian on the map!");
         return;
       }
       if (state.resources < cost) {
@@ -698,6 +732,9 @@
       }
 
       state.resources -= cost;
+      // Consume 1 free civilian unit
+      state.units.splice(unassignedCivIdx, 1);
+
       const spawnX = building.tileX + 1;
       const spawnY = building.tileY;
       state.units.push(createUnit(unitType, spawnX, spawnY, 'blue'));
@@ -716,14 +753,12 @@
     }
 
     function getUnassignedCivilians() {
-      let assigned = 0;
-      state.buildings.forEach(b => assigned += (b.assignedCivilians || 0));
-      return state.civilians - assigned;
+      return state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
     }
 
     function getResidenceCivilians(resBuilding) {
       if (resBuilding.type !== 'residence') return 0;
-      let civsLeft = state.civilians;
+      let civsLeft = state.units.filter(u => u.type === 'civilian').length;
       let residences = state.buildings.filter(b => b.type === 'residence');
       residences.sort((a, b) => a.id - b.id);
       
@@ -806,6 +841,9 @@
         if (b.type === 'residence') {
           const housed = getResidenceCivilians(b);
           ctx.fillText(`Civ: ${housed}/${b.capBonus}`, px + 6, py + 28);
+        } else if (b.type === 'mine') {
+          const miners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === b.id).length;
+          ctx.fillText(`Miners: ${miners}`, px + 6, py + 28);
         }
       });
 
@@ -816,7 +854,7 @@
           const endX = u.targetX * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
           const endY = u.targetY * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
 
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+          ctx.strokeStyle = u.type === 'civilian' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(56, 189, 248, 0.3)';
           ctx.lineWidth = 1.5;
           ctx.setLineDash([4, 4]);
           ctx.beginPath();
@@ -831,14 +869,14 @@
         const px = u.x * TILE_SIZE + state.camera.x;
         const py = u.y * TILE_SIZE + state.camera.y;
 
-        const assetKey = u.type === 'tank' ? 'tank' : 'soldier';
+        const assetKey = u.type === 'tank' ? 'tank' : (u.type === 'civilian' ? 'civilian' : 'soldier');
         const img = IMAGES[assetKey];
         if (img) {
           const imgX = px + (TILE_SIZE - img.width) / 2;
           const imgY = py + (TILE_SIZE - img.height) / 2;
           ctx.drawImage(img, imgX, imgY);
         } else {
-          ctx.fillStyle = u.type === 'tank' ? '#ef4444' : '#f97316';
+          ctx.fillStyle = u.type === 'tank' ? '#ef4444' : (u.type === 'civilian' ? '#eab308' : '#f97316');
           ctx.beginPath();
           ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, u.type === 'tank' ? 18 : 10, 0, Math.PI * 2);
           ctx.fill();
@@ -894,10 +932,10 @@
     // ==========================================
     function updateUI() {
       document.getElementById('ui-resources').innerText = Math.floor(state.resources);
-      document.getElementById('ui-civilians').innerText = `${state.civilians} / ${state.civilianCap}`;
+      const totalCivs = state.units.filter(u => u.type === 'civilian').length;
+      document.getElementById('ui-civilians').innerText = `${totalCivs} / ${state.civilianCap}`;
       
-      let totalMiners = 0;
-      state.buildings.forEach(b => totalMiners += (b.assignedCivilians || 0));
+      let totalMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId != null).length;
       document.getElementById('ui-miners').innerText = totalMiners;
 
       const soldierCount = state.units.filter(u => u.type === 'soldier').length;
@@ -921,7 +959,10 @@
         titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
         detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Position: (${entity.x.toFixed(1)}, ${entity.y.toFixed(1)})`;
 
-        if (entity.type === 'tank') {
+        if (entity.type === 'civilian') {
+          const status = entity.assignedMineId ? `Mining Mine #${entity.assignedMineId}` : 'Idle / Moving';
+          detailsEl.innerText += ` | Status: ${status}`;
+        } else if (entity.type === 'tank') {
           detailsEl.innerText += ` | Cannon DPS: 0.5`;
           
           const modes = ['aggressive', 'ignore_infantry', 'ignore_buildings', 'prioritize_buildings', 'hold_fire'];
@@ -938,18 +979,8 @@
         detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp}`;
 
         if (entity.type === 'mine') {
-          detailsEl.innerText += ` | Assigned Miners: ${entity.assignedCivilians}`;
-          
-          const addBtn = document.createElement('button');
-          addBtn.innerHTML = `<img src="${ASSETS.civilian}" /> + Assign Miner`;
-          addBtn.onclick = () => assignCivilian(entity, 1);
-          
-          const remBtn = document.createElement('button');
-          remBtn.innerHTML = `<img src="${ASSETS.civilian}" /> - Unassign`;
-          remBtn.onclick = () => assignCivilian(entity, -1);
-          
-          actionsEl.appendChild(addBtn);
-          actionsEl.appendChild(remBtn);
+          const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === entity.id).length;
+          detailsEl.innerText += ` | Active Miners: ${activeMiners}. (Right-click civilians onto this mine to assign)`;
         } else if (entity.type === 'residence') {
           const housed = getResidenceCivilians(entity);
           detailsEl.innerText += ` | Housed Civilians: ${housed} / ${entity.capBonus}`;

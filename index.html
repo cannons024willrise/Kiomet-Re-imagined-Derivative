@@ -201,9 +201,14 @@
         <span style="font-size: 11px; color: #64748b;">(<span id="ui-miners">0</span> Mining)</span>
       </div>
       <div class="res-item">
-        <img id="icon-mil" alt="Military" />
-        <span>Tanks / Soldiers:</span>
-        <span id="ui-military" class="res-value">0 / 0</span>
+        <img id="icon-tank" alt="Tanks" />
+        <span>Tanks:</span>
+        <span id="ui-tanks" class="res-value">0</span>
+      </div>
+      <div class="res-item">
+        <img id="icon-soldier" alt="Soldiers" />
+        <span>Soldiers:</span>
+        <span id="ui-soldiers" class="res-value">0</span>
       </div>
     </div>
 
@@ -237,7 +242,7 @@
 
     const ASSETS = {
       tank: "tank.webp",
-      soldier: "soldier.jpeg",
+      soldier: "soldier.png",
       civilian: "civilian.webp",
       mine: "mine.webp",
       residence: "residence.webp",
@@ -264,10 +269,12 @@
     function updateUIcons() {
       const iconRes = document.getElementById('icon-res');
       const iconCiv = document.getElementById('icon-civ');
-      const iconMil = document.getElementById('icon-mil');
+      const iconTank = document.getElementById('icon-tank');
+      const iconSoldier = document.getElementById('icon-soldier');
       if (iconRes) iconRes.src = ASSETS.resource;
       if (iconCiv) iconCiv.src = ASSETS.civilian;
-      if (iconMil) iconMil.src = ASSETS.tank;
+      if (iconTank) iconTank.src = ASSETS.tank;
+      if (iconSoldier) iconSoldier.src = ASSETS.soldier;
 
       document.querySelectorAll('.btn-icon-residence').forEach(el => el.src = ASSETS.residence);
       document.querySelectorAll('.btn-icon-barracks').forEach(el => el.src = ASSETS.barracks);
@@ -895,7 +902,8 @@
 
       const soldierCount = state.units.filter(u => u.type === 'soldier').length;
       const tankCount = state.units.filter(u => u.type === 'tank').length;
-      document.getElementById('ui-military').innerText = `${tankCount} / ${soldierCount}`;
+      document.getElementById('ui-tanks').innerText = tankCount;
+      document.getElementById('ui-soldiers').innerText = soldierCount;
 
       const entity = getSelectedEntity();
       const titleEl = document.getElementById('inspector-title');

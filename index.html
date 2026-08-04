@@ -36,7 +36,7 @@
       height: 100%;
     }
 
-    /* Minimal Sci-Fi HUD Overlay */
+    /* Sci-Fi HUD Overlay */
     #ui-layer {
       position: absolute;
       top: 0;
@@ -100,8 +100,8 @@
     }
 
     #inspector-panel {
-      min-width: 340px;
-      max-width: 440px;
+      min-width: 360px;
+      max-width: 460px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -257,13 +257,13 @@
 
     <!-- Bottom Interface -->
     <div id="bottom-hud">
-      <!-- Context Inspector -->
+      <!-- Context Inspector & Info Card Panel -->
       <div id="inspector-panel" class="hud-panel">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div class="panel-title" id="inspector-title" style="border-bottom: none; margin-bottom: 0;">Selection: None</div>
           <button id="btn-deselect" style="display:none; padding: 2px 8px; font-size: 10px;" onclick="deselectEntity()">Deselect</button>
         </div>
-        <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
+        <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">
           Left-click a unit or structure to select source tile. Left-click another tile to set target destination.
         </div>
         <div id="inspector-actions" class="btn-group"></div>
@@ -305,6 +305,34 @@
       armory: "armory.webp",
       radar: "radar.webp",
       resource: "resources.webp"
+    };
+
+    const BUILDING_INFO = {
+      residence: {
+        title: "Residence",
+        desc: "Increases civilian population capacity (+10 cap bonus) and passively spawns new civilians.",
+        stats: "Cost: 100g | Housing Cap: +10 Civilians | Garrison: 10 Units"
+      },
+      barracks: {
+        title: "Barracks",
+        desc: "Military recruitment hub. Converts available civilians into Soldiers.",
+        stats: "Cost: 200g | Train: 50g + 1 Civilian | Garrison: 10 Units"
+      },
+      armory: {
+        title: "Armory",
+        desc: "Heavy weapons factory. Converts available civilians into armored Tanks.",
+        stats: "Cost: 500g | Train: 300g + 1 Civilian | Garrison: 10 Units"
+      },
+      radar: {
+        title: "Radar Station",
+        desc: "Tactical reconnaissance installation providing strategic vision over adjacent tiles.",
+        stats: "Cost: 250g | Vision Range: 4 Tiles | Garrison: 10 Units"
+      },
+      mine: {
+        title: "Resource Mine",
+        desc: "Resource extraction node. Generates gold when civilians mine or garrison inside.",
+        stats: "Yield: ~1g/min per active miner | Worker Cap: 10 Civilians"
+      }
     };
 
     const IMAGES = {};
@@ -789,6 +817,8 @@
         state.camera.y += dy / state.camera.zoom;
         state.camera.dragStart = { x: e.clientX, y: e.clientY };
       }
+      
+      updateUI();
     });
 
     window.addEventListener('mouseup', () => {
@@ -1183,16 +1213,6 @@
           ctx.lineWidth = 2;
           ctx.strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
         }
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '10px sans-serif';
-        ctx.fillText(b.type.toUpperCase(), px + 6, py + 16);
-
-        // Display garrisoned unit count inside ANY structure
-        const garrisoned = state.units.filter(u => u.garrisonedBuildingId === b.id).length;
-        const maxCap = b.capacity || b.capBonus || 10;
-        ctx.fillStyle = garrisoned > 0 ? '#38bdf8' : '#64748b';
-        ctx.fillText(`Inside: ${garrisoned}/${maxCap}`, px + 6, py + 28);
       });
 
       // Render Active Unit Path Lines
@@ -1307,7 +1327,7 @@
     }
 
     // ==========================================
-    // 9. UI UPDATER
+    // 9. UI UPDATER (WEB PAGE HUD & INSPECTOR PANEL)
     // ==========================================
     function updateUI() {
       document.getElementById('ui-resources').innerText = Math.floor(state.resources);
@@ -1330,6 +1350,40 @@
       actionsEl.innerHTML = '';
 
       if (!entity) {
+        // Hover Preview Info Card inside the Web Interface
+        const hoveredBld = state.buildings.find(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
+        if (hoveredBld) {
+          const info = BUILDING_INFO[hoveredBld.type] || { title: hoveredBld.type, desc: '', stats: '' };
+          const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === hoveredBld.id);
+          const maxCap = hoveredBld.capacity || hoveredBld.capBonus || 10;
+
+          let unitBreakdown = "";
+          if (garrisonedUnits.length === 0) {
+            unitBreakdown = "<span style='color: #64748b;'>None</span>";
+          } else {
+            const counts = {};
+            garrisonedUnits.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
+            unitBreakdown = Object.entries(counts)
+              .map(([type, count]) => `<span style="color:#38bdf8;">${count} ${type.charAt(0).toUpperCase() + type.slice(1)}${count > 1 ? 's' : ''}</span>`)
+              .join(', ');
+          }
+
+          titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;
+          detailsEl.innerHTML = `
+            <div style="margin-bottom: 4px;">
+              <strong style="color: #e2e8f0;">${info.title} Info Card</strong>
+              <div style="color: #64748b; font-size: 11px;">${info.stats}</div>
+            </div>
+            <div style="margin-bottom: 6px; font-size: 11px; color: #94a3b8;">${info.desc}</div>
+            <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
+              <div><strong>HP:</strong> ${hoveredBld.hp}/${hoveredBld.maxHp} | <strong>Tile:</strong> (${hoveredBld.tileX}, ${hoveredBld.tileY})</div>
+              <div style="margin-top: 2px;"><strong>Units Inside (${garrisonedUnits.length}/${maxCap}):</strong> ${unitBreakdown}</div>
+            </div>
+          `;
+          deselectBtn.style.display = 'none';
+          return;
+        }
+
         titleEl.innerText = 'Selection: None';
         detailsEl.innerText = 'Left-click a unit or structure to select source tile. Left-click another tile to set target destination.';
         deselectBtn.style.display = 'none';
@@ -1366,14 +1420,37 @@
           });
         }
       } else if (entity.entityType === 'building') {
-        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
-        const garrisonedCount = state.units.filter(u => u.garrisonedBuildingId === entity.id).length;
+        const info = BUILDING_INFO[entity.type] || { title: entity.type, desc: '', stats: '' };
+        const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === entity.id);
         const maxCap = entity.capacity || entity.capBonus || 10;
-        
-        detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp} | Garrisoned: ${garrisonedCount}/${maxCap}${targetText}`;
+
+        let unitBreakdown = "";
+        if (garrisonedUnits.length === 0) {
+          unitBreakdown = "<span style='color: #64748b;'>None</span>";
+        } else {
+          const counts = {};
+          garrisonedUnits.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
+          unitBreakdown = Object.entries(counts)
+            .map(([type, count]) => `<span style="color:#38bdf8;">${count} ${type.charAt(0).toUpperCase() + type.slice(1)}${count > 1 ? 's' : ''}</span>`)
+            .join(', ');
+        }
+
+        titleEl.innerText = `${info.title.toUpperCase()} (ID: ${entity.id})`;
+
+        detailsEl.innerHTML = `
+          <div style="margin-bottom: 4px;">
+            <strong style="color: #e2e8f0;">${info.title} Info Card</strong>
+            <div style="color: #64748b; font-size: 11px;">${info.stats}</div>
+          </div>
+          <div style="margin-bottom: 6px; font-size: 11px; color: #94a3b8;">${info.desc}</div>
+          <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
+            <div><strong>HP:</strong> ${entity.hp}/${entity.maxHp} | <strong>Tile:</strong> (${entity.tileX}, ${entity.tileY})${targetText}</div>
+            <div style="margin-top: 2px;"><strong>Units Inside (${garrisonedUnits.length}/${maxCap}):</strong> ${unitBreakdown}</div>
+          </div>
+        `;
 
         // Deploy button available for ANY structure holding garrisoned units
-        if (garrisonedCount > 0) {
+        if (garrisonedUnits.length > 0) {
           const deployBtn = document.createElement('button');
           deployBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Deploy Garrisoned Units`;
           deployBtn.onclick = () => openStructureGarrisonDialog(entity);

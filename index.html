@@ -259,9 +259,12 @@
     <div id="bottom-hud">
       <!-- Context Inspector -->
       <div id="inspector-panel" class="hud-panel">
-        <div class="panel-title" id="inspector-title">Selection: None</div>
-        <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px;">
-          Left-click a unit or structure to select source tile. Right-click grid to select target tile.
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="panel-title" id="inspector-title" style="border-bottom: none; margin-bottom: 0;">Selection: None</div>
+          <button id="btn-deselect" style="display:none; padding: 2px 8px; font-size: 10px;" onclick="deselectEntity()">Deselect</button>
+        </div>
+        <div id="inspector-details" style="font-size: 12px; color: #94a3b8; min-height: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
+          Left-click a unit or structure to select source tile. Left-click another tile to set target destination.
         </div>
         <div id="inspector-actions" class="btn-group"></div>
       </div>
@@ -371,7 +374,7 @@
     const state = {
       resources: 0,
       civilians: 15,
-      civilianCap: 20,
+      civilianCap: 0, // Capped strictly based on total Residence housing capacity
       
       // Entities
       units: [],
@@ -407,7 +410,7 @@
       for (let i = 0; i < 15; i++) {
         const targetRes = (i < 10) ? res1 : res2;
         const civ = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
-        civ.housedInResidenceId = targetRes.id;
+        civ.garrisonedBuildingId = targetRes.id;
         state.units.push(civ);
       }
 
@@ -459,14 +462,14 @@
         meleeDmg: isTank ? 10 : (isCivilian ? 0 : 1),
         // Tank Cannon Mechanics
         cannonDmg: isTank ? 5 : 0,
-        cannonCooldown: 0, // Tick counter (10s = 10000ms)
+        cannonCooldown: 0, // Tick counter
         fireControl: 'aggressive', // 'aggressive' | 'ignore_infantry' | 'ignore_buildings' | 'prioritize_buildings' | 'hold_fire'
         selected: false,
-        // Civilian Mine & Residence Mechanics
+        // Structure Entry & Mine Mechanics
         assignedMineId: null,
         targetMineId: null,
-        housedInResidenceId: null,
-        targetResidenceId: null
+        garrisonedBuildingId: null, // Can enter ANY structure
+        targetBuildingId: null
       };
     }
 
@@ -481,13 +484,15 @@
         hp: 20,
         maxHp: 20,
         assignedCivilians: 0,
-        trainingQueue: []
+        trainingQueue: [],
+        capacity: 10 // Max capacity for garrisoning units in any structure
       };
 
-      if (type === 'residence') { base.cost = 100; base.capBonus = 10; }
-      if (type === 'barracks') base.cost = 200;
-      if (type === 'armory') base.cost = 500;
-      if (type === 'radar') { base.cost = 250; base.vision = 4; }
+      if (type === 'residence') { base.cost = 100; base.capBonus = 10; base.capacity = 10; }
+      if (type === 'barracks') { base.cost = 200; base.capacity = 10; }
+      if (type === 'armory') { base.cost = 500; base.capacity = 10; }
+      if (type === 'radar') { base.cost = 250; base.vision = 4; base.capacity = 10; }
+      if (type === 'mine') { base.capacity = 10; }
 
       return base;
     }
@@ -524,8 +529,8 @@
     // ==========================================
     function updateCombatAndMovement(deltaTime) {
       state.units.forEach(unit => {
-        // Skip movement processing for garrisoned/housed civilians
-        if (unit.housedInResidenceId) return;
+        // Skip movement and combat processing for garrisoned units inside structures
+        if (unit.garrisonedBuildingId) return;
 
         if (unit.x !== unit.targetX || unit.y !== unit.targetY) {
           const dx = unit.targetX - unit.x;
@@ -536,26 +541,32 @@
             unit.x = unit.targetX;
             unit.y = unit.targetY;
 
-            // On arriving at a mine target, assign civilian to that mine
+            // On arriving at a target structure, enter/garrison inside if capacity permits
+            if (unit.targetBuildingId) {
+              const bld = state.buildings.find(b => b.id === unit.targetBuildingId);
+              if (bld) {
+                const garrisonedCount = state.units.filter(u => u.garrisonedBuildingId === bld.id).length;
+                const maxCap = bld.capacity || bld.capBonus || 10;
+                
+                if (garrisonedCount < maxCap) {
+                  unit.garrisonedBuildingId = bld.id;
+                  if (bld.type === 'mine' && unit.type === 'civilian') {
+                    unit.assignedMineId = bld.id;
+                  }
+                } else {
+                  showDialog("Structure Full", `${bld.type.toUpperCase()} #${bld.id} has reached maximum garrison capacity (${maxCap}).`);
+                }
+              }
+              unit.targetBuildingId = null;
+            }
+
+            // On arriving at a mine target for civilians
             if (unit.type === 'civilian' && unit.targetMineId) {
               const mine = state.buildings.find(b => b.id === unit.targetMineId);
               if (mine) {
                 unit.assignedMineId = mine.id;
               }
               unit.targetMineId = null;
-            }
-            // On arriving at a residence target, garrison civilian inside
-            if (unit.type === 'civilian' && unit.targetResidenceId) {
-              const res = state.buildings.find(b => b.id === unit.targetResidenceId);
-              if (res) {
-                const housedCount = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === res.id).length;
-                if (housedCount < res.capBonus) {
-                  unit.housedInResidenceId = res.id;
-                } else {
-                  showDialog("Residence Full", `Residence #${res.id} has reached maximum capacity (${res.capBonus}).`);
-                }
-              }
-              unit.targetResidenceId = null;
             }
           } else {
             unit.x += (dx / dist) * unit.speed;
@@ -567,7 +578,7 @@
 
           // Support multi-unit combat on the same tile
           state.units.forEach(enemy => {
-            if (!enemy.housedInResidenceId && enemy.faction !== unit.faction && 
+            if (!enemy.garrisonedBuildingId && enemy.faction !== unit.faction && 
                 Math.floor(enemy.x) === currentTileX && 
                 Math.floor(enemy.y) === currentTileY) {
               
@@ -601,7 +612,7 @@
 
       if (tank.fireControl !== 'ignore_infantry') {
         state.units.forEach(u => {
-          if (!u.housedInResidenceId && u.faction !== tank.faction) {
+          if (!u.garrisonedBuildingId && u.faction !== tank.faction) {
             const ux = Math.floor(u.x);
             const uy = Math.floor(u.y);
             if (Math.abs(ux - tankTileX) <= 1 && Math.abs(uy - tankTileY) <= 1) {
@@ -653,7 +664,7 @@
       let miners = 0;
       state.buildings.forEach(b => {
         if (b.type === 'mine') {
-          const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === b.id).length;
+          const activeMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId === b.id || u.garrisonedBuildingId === b.id)).length;
           b.assignedCivilians = activeMiners;
           miners += activeMiners;
         }
@@ -661,11 +672,14 @@
 
       state.resources += miners * (1 / 60);
 
-      let cap = 20;
+      // Strictly cap civilians based on total housing capacity across active Residences
+      let totalHousingCap = 0;
       state.buildings.forEach(b => {
-        if (b.type === 'residence') cap += b.capBonus;
+        if (b.type === 'residence' && b.faction === 'blue') {
+          totalHousingCap += (b.capBonus || 10);
+        }
       });
-      state.civilianCap = cap;
+      state.civilianCap = totalHousingCap;
 
       const currentCivilians = state.units.filter(u => u.type === 'civilian').length;
       state.civilians = currentCivilians;
@@ -675,9 +689,9 @@
         if (civilianGrowthCounter >= 5) {
           const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
           const spawnX = res ? res.tileX : 2;
-          const spawnY = res ? res.tileY + 1 : 2;
+          const spawnY = res ? res.tileY : 2;
           const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
-          if (res) newCiv.housedInResidenceId = res.id;
+          if (res) newCiv.garrisonedBuildingId = res.id;
           state.units.push(newCiv);
           civilianGrowthCounter = 0;
         }
@@ -689,7 +703,7 @@
     }, TICK_RATE);
 
     // ==========================================
-    // 6. INPUT HANDLING & SELECTION
+    // 6. INPUT HANDLING & SELECTION (LEFT CLICK ONLY MOVEMENT)
     // ==========================================
     canvas.addEventListener('mousedown', (e) => {
       const world = screenToWorld(e.clientX, e.clientY);
@@ -697,14 +711,49 @@
       const tileY = Math.floor(world.y);
 
       if (e.button === 0) {
-        // Left Click: Source Tile / Entity Selection
+        // Left Click: Building Placement, Source Entity Selection, or Target Tile Movement
         if (state.buildMode) {
           placeBuilding(state.buildMode, tileX, tileY);
           state.buildMode = null;
           return;
         }
 
-        const unitsOnTile = state.units.filter(u => !u.housedInResidenceId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
+        const selected = getSelectedEntity();
+
+        if (selected) {
+          const selTileX = selected.entityType === 'unit' ? Math.floor(selected.x) : selected.tileX;
+          const selTileY = selected.entityType === 'unit' ? Math.floor(selected.y) : selected.tileY;
+
+          // If clicking a DIFFERENT tile while an entity is selected: issue Target Tile / Move / Enter command!
+          if (tileX !== selTileX || tileY !== selTileY) {
+            state.targetTile = { x: tileX, y: tileY };
+
+            // Direct move / enter structure command if selected entity is a single deployed unit
+            if (selected.entityType === 'unit' && !selected.garrisonedBuildingId) {
+              selected.targetX = tileX;
+              selected.targetY = tileY;
+
+              const targetBld = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
+              if (targetBld) {
+                selected.targetBuildingId = targetBld.id;
+                if (targetBld.type === 'mine' && selected.type === 'civilian') {
+                  selected.targetMineId = targetBld.id;
+                } else {
+                  selected.targetMineId = null;
+                }
+              } else {
+                selected.targetBuildingId = null;
+                selected.targetMineId = null;
+                selected.assignedMineId = null;
+              }
+            }
+            updateUI();
+            return;
+          }
+        }
+
+        // If no entity is selected, OR if left-clicking the same tile as the currently selected entity: cycle/select entity
+        const unitsOnTile = state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
         
         if (unitsOnTile.length > 0) {
           const currIndex = unitsOnTile.findIndex(u => u.id === state.selectedEntityId);
@@ -719,46 +768,11 @@
           state.selectedEntityId = clickedBuilding ? clickedBuilding.id : null;
         }
 
-        // Reset Target Tile when source selection changes
         state.targetTile = null;
         updateUI();
 
       } else if (e.button === 2 || e.button === 1) {
-        // Right Click: Select Target Tile
-        if (e.button === 2) {
-          const selected = getSelectedEntity();
-          
-          if (selected) {
-            // Set global target tile for chosen source entity
-            state.targetTile = { x: tileX, y: tileY };
-
-            // Direct move command if selected entity is a single deployed unit
-            if (selected.entityType === 'unit' && !selected.housedInResidenceId) {
-              selected.targetX = tileX;
-              selected.targetY = tileY;
-
-              if (selected.type === 'civilian') {
-                const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === tileX && b.tileY === tileY);
-                const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === tileX && b.tileY === tileY);
-
-                if (targetMine) {
-                  selected.targetMineId = targetMine.id;
-                  selected.targetResidenceId = null;
-                } else if (targetRes) {
-                  selected.targetResidenceId = targetRes.id;
-                  selected.targetMineId = null;
-                  selected.assignedMineId = null;
-                } else {
-                  selected.targetMineId = null;
-                  selected.assignedMineId = null;
-                  selected.targetResidenceId = null;
-                }
-              }
-            }
-            updateUI();
-          }
-        }
-        
+        // Right Click / Middle Click: Camera Pan Dragging Only
         state.camera.isDragging = true;
         state.camera.dragStart = { x: e.clientX, y: e.clientY };
       }
@@ -792,6 +806,12 @@
     // ==========================================
     // 7. ACTIONS & COMMANDS
     // ==========================================
+    function deselectEntity() {
+      state.selectedEntityId = null;
+      state.targetTile = null;
+      updateUI();
+    }
+
     function setBuildMode(structureType) {
       state.buildMode = structureType;
     }
@@ -818,11 +838,11 @@
       let trainedCount = 0;
 
       for (let i = 0; i < count; i++) {
-        const unassignedCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null);
+        const availableCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null);
 
-        if (unassignedCivIdx === -1) {
+        if (availableCivIdx === -1) {
           if (trainedCount === 0) {
-            showDialog("Recruitment Error", "Requires unassigned civilians deployed on the grid!");
+            showDialog("Recruitment Error", "Requires an available civilian to convert!");
           }
           break;
         }
@@ -834,7 +854,7 @@
         }
 
         state.resources -= costPerUnit;
-        state.units.splice(unassignedCivIdx, 1);
+        state.units.splice(availableCivIdx, 1);
 
         const spawnX = building.tileX;
         const spawnY = building.tileY;
@@ -843,6 +863,9 @@
         if (targetTile) {
           newUnit.targetX = targetTile.x;
           newUnit.targetY = targetTile.y;
+
+          const targetBld = state.buildings.find(b => b.tileX === targetTile.x && b.tileY === targetTile.y);
+          if (targetBld) newUnit.targetBuildingId = targetBld.id;
         }
 
         state.units.push(newUnit);
@@ -851,22 +874,23 @@
       updateUI();
     }
 
-    // Standardized Target-Aware Dialog for Mine
-    function openMineDialog(mine) {
+    // Unified Structure Garrison & Deployment Dialog System (Works for Any Structure)
+    function openStructureGarrisonDialog(building) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing send options.");
+        showDialog("Select Target Tile First", "Please left-click a target destination tile on the grid before deploying garrisoned units.");
         return;
       }
 
-      const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === mine.id);
+      const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
       const dialog = document.getElementById('game-modal');
       
-      document.getElementById('modal-title').innerText = `Mine #${mine.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
+      document.getElementById('modal-title').innerText = `${building.type.toUpperCase()} #${building.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
       
-      const maxCount = activeMiners.length;
+      const maxCount = garrisonedUnits.length;
+      const maxCap = building.capacity || building.capBonus || 10;
       
       if (maxCount === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No active miners currently assigned to this Mine.</p>`;
+        document.getElementById('modal-body').innerHTML = `<p>No units currently garrisoned in this ${building.type}.</p>`;
         const actionsEl = document.getElementById('modal-actions');
         actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
         dialog.showModal();
@@ -875,9 +899,9 @@
 
       document.getElementById('modal-body').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Active Miners: <strong style="color:#38bdf8">${maxCount}</strong></p>
-          <p style="font-size: 11px; color: #22c55e;">Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
-          <label style="font-size: 12px; color: #94a3b8;">Select number of miners to reassign & send:</label>
+          <p>Garrisoned Units: <strong style="color:#38bdf8">${maxCount} / ${maxCap}</strong></p>
+          <p style="font-size: 11px; color: #22c55e;">Target Destination: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
+          <label style="font-size: 12px; color: #94a3b8;">Select number of units to deploy & send:</label>
           <div style="display: flex; align-items: center; gap: 10px;">
             <input type="range" id="deploy-range" min="1" max="${maxCount}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
             <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
@@ -897,7 +921,7 @@
       sendBtn.innerText = 'Confirm Send';
       sendBtn.onclick = () => {
         const count = parseInt(document.getElementById('deploy-range').value, 10);
-        dispatchMinersFromMineToTarget(mine, count, state.targetTile);
+        deployUnitsFromStructure(building, count, state.targetTile);
         dialog.close();
       };
 
@@ -911,107 +935,48 @@
       dialog.showModal();
     }
 
-    function dispatchMinersFromMineToTarget(mine, count, targetTile) {
-      const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === mine.id);
-      const dispatchCount = Math.min(count, activeMiners.length);
+    function deployUnitsFromStructure(building, count, targetTile) {
+      const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
+      const dispatchCount = Math.min(count, garrisonedUnits.length);
 
-      const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === targetTile.x && b.tileY === targetTile.y);
-      const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === targetTile.x && b.tileY === targetTile.y);
+      const targetBld = state.buildings.find(b => b.tileX === targetTile.x && b.tileY === targetTile.y);
 
       for (let i = 0; i < dispatchCount; i++) {
-        const civ = activeMiners[i];
-        civ.assignedMineId = null; // Unassign from current mine
-        civ.targetX = targetTile.x;
-        civ.targetY = targetTile.y;
+        const unit = garrisonedUnits[i];
+        unit.garrisonedBuildingId = null;
+        unit.assignedMineId = null;
+        unit.x = building.tileX;
+        unit.y = building.tileY;
+        unit.targetX = targetTile.x;
+        unit.targetY = targetTile.y;
 
-        if (targetMine) {
-          civ.targetMineId = targetMine.id;
-          civ.targetResidenceId = null;
-        } else if (targetRes) {
-          civ.targetResidenceId = targetRes.id;
-          civ.targetMineId = null;
+        if (targetBld) {
+          unit.targetBuildingId = targetBld.id;
+          if (targetBld.type === 'mine' && unit.type === 'civilian') {
+            unit.targetMineId = targetBld.id;
+          }
         } else {
-          civ.targetMineId = null;
-          civ.targetResidenceId = null;
+          unit.targetBuildingId = null;
+          unit.targetMineId = null;
         }
       }
       updateUI();
     }
 
-    // Standardized Target-Aware Dialog for Residence
-    function openResidenceDialog(residence) {
-      if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing send options.");
-        return;
-      }
-
-      const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === residence.id);
-      const dialog = document.getElementById('game-modal');
-      
-      document.getElementById('modal-title').innerText = `Residence #${residence.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
-      
-      const maxCount = housedCivs.length;
-      
-      if (maxCount === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No civilians currently housed in this Residence.</p>`;
-        const actionsEl = document.getElementById('modal-actions');
-        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
-        dialog.showModal();
-        return;
-      }
-
-      document.getElementById('modal-body').innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Housed Civilians: <strong style="color:#38bdf8">${maxCount} / ${residence.capBonus}</strong></p>
-          <p style="font-size: 11px; color: #22c55e;">Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
-          <label style="font-size: 12px; color: #94a3b8;">Select number of civilians to send:</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <input type="range" id="deploy-range" min="1" max="${maxCount}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
-            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #38bdf8; min-width: 24px; text-align: center;">1</span>
-          </div>
-          <div style="display: flex; gap: 6px; margin-top: 4px;">
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxCount}); document.getElementById('range-val').innerText=Math.min(5, ${maxCount});">5</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxCount}; document.getElementById('range-val').innerText=${maxCount};">Max (${maxCount})</button>
-          </div>
-        </div>
-      `;
-
-      const actionsEl = document.getElementById('modal-actions');
-      actionsEl.innerHTML = '';
-
-      const sendBtn = document.createElement('button');
-      sendBtn.innerText = 'Confirm Send';
-      sendBtn.onclick = () => {
-        const count = parseInt(document.getElementById('deploy-range').value, 10);
-        deployCivilianFromResidenceToTarget(residence, count, state.targetTile);
-        dialog.close();
-      };
-
-      const closeBtn = document.createElement('button');
-      closeBtn.innerText = 'Cancel';
-      closeBtn.onclick = () => dialog.close();
-
-      actionsEl.appendChild(sendBtn);
-      actionsEl.appendChild(closeBtn);
-
-      dialog.showModal();
-    }
-
     // Standardized Target-Aware Dialog for Barracks
     function openBarracksDialog(barracks) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
+        showDialog("Select Target Tile First", "Please left-click a target destination tile on the grid before choosing training options.");
         return;
       }
 
-      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null).length;
+      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
       const dialog = document.getElementById('game-modal');
       
       document.getElementById('modal-title').innerText = `Barracks #${barracks.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
       
       if (availableCivs === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No unassigned civilians available to convert into Soldiers (Cost: 50g + 1 Civilian each).</p>`;
+        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Soldiers (Cost: 50g + 1 Civilian each).</p>`;
         const actionsEl = document.getElementById('modal-actions');
         actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
         dialog.showModal();
@@ -1062,17 +1027,17 @@
     // Standardized Target-Aware Dialog for Armory
     function openArmoryDialog(armory) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
+        showDialog("Select Target Tile First", "Please left-click a target destination tile on the grid before choosing training options.");
         return;
       }
 
-      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null && u.housedInResidenceId == null).length;
+      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
       const dialog = document.getElementById('game-modal');
       
       document.getElementById('modal-title').innerText = `Armory #${armory.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
       
       if (availableCivs === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No unassigned civilians available to convert into Tanks (Cost: 300g + 1 Civilian each).</p>`;
+        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Tanks (Cost: 300g + 1 Civilian each).</p>`;
         const actionsEl = document.getElementById('modal-actions');
         actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
         dialog.showModal();
@@ -1118,36 +1083,6 @@
       actionsEl.appendChild(closeBtn);
 
       dialog.showModal();
-    }
-
-    function deployCivilianFromResidenceToTarget(residence, count, targetTile) {
-      const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === residence.id);
-      const deployCount = Math.min(count, housedCivs.length);
-
-      const targetMine = state.buildings.find(b => b.type === 'mine' && b.tileX === targetTile.x && b.tileY === targetTile.y);
-      const targetRes = state.buildings.find(b => b.type === 'residence' && b.tileX === targetTile.x && b.tileY === targetTile.y);
-
-      for (let i = 0; i < deployCount; i++) {
-        const civ = housedCivs[i];
-        civ.housedInResidenceId = null;
-        civ.x = residence.tileX;
-        civ.y = residence.tileY;
-        civ.targetX = targetTile.x;
-        civ.targetY = targetTile.y;
-
-        if (targetMine) {
-          civ.targetMineId = targetMine.id;
-          civ.targetResidenceId = null;
-        } else if (targetRes) {
-          civ.targetResidenceId = targetRes.id;
-          civ.targetMineId = null;
-        } else {
-          civ.targetMineId = null;
-          civ.assignedMineId = null;
-          civ.targetResidenceId = null;
-        }
-      }
-      updateUI();
     }
 
     function setFireControl(tankUnit, mode) {
@@ -1253,18 +1188,16 @@
         ctx.font = '10px sans-serif';
         ctx.fillText(b.type.toUpperCase(), px + 6, py + 16);
 
-        if (b.type === 'residence') {
-          const housed = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === b.id).length;
-          ctx.fillText(`Civ: ${housed}/${b.capBonus}`, px + 6, py + 28);
-        } else if (b.type === 'mine') {
-          const miners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === b.id).length;
-          ctx.fillText(`Miners: ${miners}`, px + 6, py + 28);
-        }
+        // Display garrisoned unit count inside ANY structure
+        const garrisoned = state.units.filter(u => u.garrisonedBuildingId === b.id).length;
+        const maxCap = b.capacity || b.capBonus || 10;
+        ctx.fillStyle = garrisoned > 0 ? '#38bdf8' : '#64748b';
+        ctx.fillText(`Inside: ${garrisoned}/${maxCap}`, px + 6, py + 28);
       });
 
       // Render Active Unit Path Lines
       state.units.forEach(u => {
-        if (u.housedInResidenceId) return;
+        if (u.garrisonedBuildingId) return;
 
         if (u.x !== u.targetX || u.y !== u.targetY) {
           const startX = u.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
@@ -1286,7 +1219,7 @@
       // Pass 1: Multi-unit tile stack count calculation
       const tileUnitCounts = {};
       state.units.forEach(u => {
-        if (u.housedInResidenceId) return;
+        if (u.garrisonedBuildingId) return;
         const key = `${Math.floor(u.x)},${Math.floor(u.y)}`;
         tileUnitCounts[key] = (tileUnitCounts[key] || 0) + 1;
       });
@@ -1294,7 +1227,7 @@
       // Pass 2: Draw multi-occupancy units cleanly spaced inside their tile boundary
       const tileUnitIndices = {};
       state.units.forEach(u => {
-        if (u.housedInResidenceId) return;
+        if (u.garrisonedBuildingId) return;
 
         const tileKey = `${Math.floor(u.x)},${Math.floor(u.y)}`;
         const totalOnTile = tileUnitCounts[tileKey];
@@ -1381,7 +1314,7 @@
       const totalCivs = state.units.filter(u => u.type === 'civilian').length;
       document.getElementById('ui-civilians').innerText = `${totalCivs} / ${state.civilianCap}`;
       
-      let totalMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId != null).length;
+      let totalMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId != null || u.garrisonedBuildingId != null)).length;
       document.getElementById('ui-miners').innerText = totalMiners;
 
       const soldierCount = state.units.filter(u => u.type === 'soldier').length;
@@ -1393,20 +1326,23 @@
       const titleEl = document.getElementById('inspector-title');
       const detailsEl = document.getElementById('inspector-details');
       const actionsEl = document.getElementById('inspector-actions');
+      const deselectBtn = document.getElementById('btn-deselect');
       actionsEl.innerHTML = '';
 
       if (!entity) {
         titleEl.innerText = 'Selection: None';
-        detailsEl.innerText = 'Left-click a unit or structure to select source tile. Right-click grid to select target tile.';
+        detailsEl.innerText = 'Left-click a unit or structure to select source tile. Left-click another tile to set target destination.';
+        deselectBtn.style.display = 'none';
         return;
       }
 
-      const targetText = state.targetTile ? ` | Target: (${state.targetTile.x}, ${state.targetTile.y})` : ' | Target: None (Right-click grid)';
+      deselectBtn.style.display = 'block';
+      const targetText = state.targetTile ? ` | Target: (${state.targetTile.x}, ${state.targetTile.y})` : ' | Target: None (Left-click grid)';
 
       if (entity.entityType === 'unit') {
         const uTileX = Math.floor(entity.x);
         const uTileY = Math.floor(entity.y);
-        const unitsOnSameTile = state.units.filter(u => !u.housedInResidenceId && Math.floor(u.x) === uTileX && Math.floor(u.y) === uTileY);
+        const unitsOnSameTile = state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === uTileX && Math.floor(u.y) === uTileY);
         const uIdx = unitsOnSameTile.findIndex(u => u.id === entity.id) + 1;
         
         const stackText = unitsOnSameTile.length > 1 ? ` (${uIdx} of ${unitsOnSameTile.length} on Tile)` : '';
@@ -1431,27 +1367,20 @@
         }
       } else if (entity.entityType === 'building') {
         titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})`;
-        detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp}${targetText}`;
+        const garrisonedCount = state.units.filter(u => u.garrisonedBuildingId === entity.id).length;
+        const maxCap = entity.capacity || entity.capBonus || 10;
+        
+        detailsEl.innerText = `Tile: (${entity.tileX}, ${entity.tileY}) | HP: ${entity.hp}/${entity.maxHp} | Garrisoned: ${garrisonedCount}/${maxCap}${targetText}`;
 
-        if (entity.type === 'mine') {
-          const activeMiners = state.units.filter(u => u.type === 'civilian' && u.assignedMineId === entity.id).length;
-          detailsEl.innerText += ` | Active Miners: ${activeMiners}`;
+        // Deploy button available for ANY structure holding garrisoned units
+        if (garrisonedCount > 0) {
+          const deployBtn = document.createElement('button');
+          deployBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Deploy Garrisoned Units`;
+          deployBtn.onclick = () => openStructureGarrisonDialog(entity);
+          actionsEl.appendChild(deployBtn);
+        }
 
-          const mineDialogBtn = document.createElement('button');
-          mineDialogBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Send / Move Options`;
-          mineDialogBtn.onclick = () => openMineDialog(entity);
-          actionsEl.appendChild(mineDialogBtn);
-
-        } else if (entity.type === 'residence') {
-          const housedCivs = state.units.filter(u => u.type === 'civilian' && u.housedInResidenceId === entity.id).length;
-          detailsEl.innerText += ` | Housed Civilians: ${housedCivs} / ${entity.capBonus}`;
-
-          const resDialogBtn = document.createElement('button');
-          resDialogBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Send / Move Options`;
-          resDialogBtn.onclick = () => openResidenceDialog(entity);
-          actionsEl.appendChild(resDialogBtn);
-
-        } else if (entity.type === 'barracks') {
+        if (entity.type === 'barracks') {
           const trainBtn = document.createElement('button');
           trainBtn.innerHTML = `<img src="${ASSETS.soldier}" /> Train / Rally Options`;
           trainBtn.onclick = () => openBarracksDialog(entity);

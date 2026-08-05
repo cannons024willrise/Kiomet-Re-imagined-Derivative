@@ -1203,6 +1203,26 @@
       updateUI();
     }
 
+    function getStructureCapacity(building) {
+      return building.capacity || building.capBonus || 10;
+    }
+
+    function getTileOccupancy(tileX, tileY) {
+      const targetBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
+      if (targetBuilding) {
+        return state.units.filter(u => u.garrisonedBuildingId === targetBuilding.id).length;
+      }
+      return state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY).length;
+    }
+
+    function getTileCapacity(tileX, tileY) {
+      const targetBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
+      if (targetBuilding) {
+        return getStructureCapacity(targetBuilding);
+      }
+      return 10;
+    }
+
     // Unified Structure Garrison & Deployment Dialog System (Works for Any Structure)
     function openStructureGarrisonDialog(building) {
       if (!state.targetTile) {
@@ -1212,14 +1232,31 @@
 
       const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
       const dialog = document.getElementById('game-modal');
+      const sourceCapacity = getStructureCapacity(building);
+      const sourceAvailable = garrisonedUnits.length;
+      const targetOccupancy = getTileOccupancy(state.targetTile.x, state.targetTile.y);
+      const targetCapacity = getTileCapacity(state.targetTile.x, state.targetTile.y);
+      const targetAvailable = Math.max(0, targetCapacity - targetOccupancy);
+      const maxCount = Math.min(sourceAvailable, targetAvailable);
       
       document.getElementById('modal-title').innerText = `${building.type.toUpperCase()} #${building.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
       
-      const maxCount = garrisonedUnits.length;
-      const maxCap = building.capacity || building.capBonus || 10;
-      
-      if (maxCount === 0) {
+      if (sourceAvailable === 0) {
         document.getElementById('modal-body').innerHTML = `<p>No units currently garrisoned in this ${building.type}.</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      if (maxCount <= 0) {
+        document.getElementById('modal-body').innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <p>Source space: <strong style="color:#d9a441">${sourceAvailable} / ${sourceCapacity}</strong></p>
+            <p>Target space: <strong style="color:#d9a441">0 / ${targetCapacity}</strong></p>
+            <p style="color:#c1443a; font-size: 12px;">The target tile is already full.</p>
+          </div>
+        `;
         const actionsEl = document.getElementById('modal-actions');
         actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
         dialog.showModal();
@@ -1228,7 +1265,8 @@
 
       document.getElementById('modal-body').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Garrisoned Units: <strong style="color:#d9a441">${maxCount} / ${maxCap}</strong></p>
+          <p>Source: <strong style="color:#d9a441">${sourceAvailable} / ${sourceCapacity}</strong></p>
+          <p>Target: <strong style="color:#d9a441">${targetAvailable} / ${targetCapacity}</strong></p>
           <p style="font-size: 11px; color: #7a9d5c;">Target Destination: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
           <label style="font-size: 12px; color: #9a9f8e;">Select number of units to deploy & send:</label>
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -1266,9 +1304,12 @@
 
     function deployUnitsFromStructure(building, count, targetTile) {
       const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
-      const dispatchCount = Math.min(count, garrisonedUnits.length);
-
       const targetBld = state.buildings.find(b => b.tileX === targetTile.x && b.tileY === targetTile.y);
+      const targetCapacity = targetBld ? getStructureCapacity(targetBld) : 10;
+      const targetOccupancy = targetBld
+        ? state.units.filter(u => u.garrisonedBuildingId === targetBld.id).length
+        : state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === targetTile.x && Math.floor(u.y) === targetTile.y).length;
+      const dispatchCount = Math.min(count, garrisonedUnits.length, Math.max(0, targetCapacity - targetOccupancy));
 
       for (let i = 0; i < dispatchCount; i++) {
         const unit = garrisonedUnits[i];

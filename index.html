@@ -453,6 +453,32 @@
 
     loadAssets();
 
+    function resumeProgressFromBackground() {
+      const elapsed = Date.now() - (state.lastSavedAt || Date.now());
+      if (elapsed > 0) {
+        applyOfflineProgress(elapsed);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        syncPersistenceTimestamp();
+        saveGameState();
+      } else {
+        resumeProgressFromBackground();
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      syncPersistenceTimestamp();
+      saveGameState();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      syncPersistenceTimestamp();
+      saveGameState();
+    });
+
     // Dialog Utility System
     function showDialog(title, text, actions = []) {
       const dialog = document.getElementById('game-modal');
@@ -485,21 +511,27 @@
     // ==========================================
     // 2. STATE MANAGEMENT
     // ==========================================
+    const SAVE_KEY = 'grid-rts-engine-save-v1';
+    const CATCH_UP_CAP_MS = 1000 * 60 * 60 * 12; // Keep recovery work sane if the tab was gone for ages.
+    let idCounter = 1;
+
     const state = {
       resources: 0,
       civilians: 15,
       civilianCap: 0, // Capped strictly based on total Residence housing capacity
-      
+      civilianGrowthCounter: 0,
+      lastSavedAt: Date.now(),
+
       // Entities
       units: [],
       buildings: [],
-      
+
       // Interaction State
       selectedEntityId: null,
       targetTile: null, // Selected target destination tile {x, y}
       hoveredTile: { x: 0, y: 0 },
       buildMode: null, // 'residence', etc.
-      
+
       // Camera
       camera: {
         x: 0,
@@ -516,8 +548,140 @@
       playerFaction: 'blue'
     };
 
-    // Initialize Default Buildings & Civilians inside Residence
+    function refreshDerivedState() {
+      const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
+      state.civilianCap = numResidences * 10;
+      state.civilians = state.units.filter(u => u.type === 'civilian').length;
+    }
+
+    function syncPersistenceTimestamp() {
+      state.lastSavedAt = Date.now();
+    }
+
+    function saveGameState() {
+      try {
+        const payload = {
+          resources: state.resources,
+          civilians: state.civilians,
+          civilianCap: state.civilianCap,
+          civilianGrowthCounter: state.civilianGrowthCounter,
+          units: state.units,
+          buildings: state.buildings,
+          selectedEntityId: state.selectedEntityId,
+          targetTile: state.targetTile,
+          hoveredTile: state.hoveredTile,
+          buildMode: state.buildMode,
+          camera: state.camera,
+          playerFaction: state.playerFaction,
+          lastSavedAt: state.lastSavedAt,
+          idCounter
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        console.warn('Save failed:', err);
+      }
+    }
+
+    function loadGameState() {
+      try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return false;
+
+        const data = JSON.parse(raw);
+        if (!data || !Array.isArray(data.units) || !Array.isArray(data.buildings)) return false;
+
+        state.resources = Number(data.resources) || 0;
+        state.civilians = Number(data.civilians) || 0;
+        state.civilianCap = Number(data.civilianCap) || 0;
+        state.civilianGrowthCounter = Number(data.civilianGrowthCounter) || 0;
+        state.units = data.units;
+        state.buildings = data.buildings;
+        state.selectedEntityId = null;
+        state.targetTile = null;
+        state.hoveredTile = data.hoveredTile || { x: 0, y: 0 };
+        state.buildMode = null;
+        state.camera = { ...state.camera, ...(data.camera || {}) };
+        state.playerFaction = data.playerFaction || 'blue';
+        state.lastSavedAt = Number(data.lastSavedAt) || Date.now();
+
+        const maxId = Math.max(
+          0,
+          ...state.units.map(u => Number(u.id) || 0),
+          ...state.buildings.map(b => Number(b.id) || 0)
+        );
+        idCounter = Math.max(maxId + 1, Number(data.idCounter) || 1);
+
+        refreshDerivedState();
+        return true;
+      } catch (err) {
+        console.warn('Load failed:', err);
+        return false;
+      }
+    }
+
+    function processEconomyTick() {
+      let miners = 0;
+      state.buildings.forEach(b => {
+        if (b.type === 'mine') {
+          const activeMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId === b.id || u.garrisonedBuildingId === b.id)).length;
+          b.assignedCivilians = activeMiners;
+          miners += activeMiners;
+        }
+      });
+
+      state.resources += miners * (1 / 60);
+
+      refreshDerivedState();
+
+      // Spawn logic: grow up to the cap
+      if (state.civilians < state.civilianCap) {
+        state.civilianGrowthCounter++;
+        if (state.civilianGrowthCounter >= 5) {
+          // Spawn anywhere; optionally auto-garrison into a residence with space
+          const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
+          const spawnX = res ? res.tileX : 2;
+          const spawnY = res ? res.tileY : 2;
+          const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
+          if (res) newCiv.garrisonedBuildingId = res.id;
+          state.units.push(newCiv);
+          state.civilianGrowthCounter = 0;
+          refreshDerivedState();
+        }
+      } else {
+        state.civilianGrowthCounter = 0;
+      }
+
+      syncPersistenceTimestamp();
+      saveGameState();
+      updateUI();
+    }
+
+    function applyOfflineProgress(elapsedMs) {
+      const cappedMs = Math.max(0, Math.min(elapsedMs, CATCH_UP_CAP_MS));
+      if (cappedMs <= 0) return;
+
+      // Advance movement/combat in one go, then apply the matching number of economy ticks.
+      updateCombatAndMovement(cappedMs);
+
+      const economyTicks = Math.floor(cappedMs / TICK_RATE);
+      for (let i = 0; i < economyTicks; i++) {
+        processEconomyTick();
+      }
+
+      state.lastSavedAt = Date.now();
+      saveGameState();
+    }
+
     function initGame() {
+      const loaded = loadGameState();
+      if (loaded) {
+        const elapsed = Date.now() - state.lastSavedAt;
+        applyOfflineProgress(elapsed);
+        updateUIcons();
+        updateUI();
+        return;
+      }
+
       // Starting Residences
       const res1 = createBuilding('residence', 2, 2, 'blue');
       const res2 = createBuilding('residence', 4, 2, 'blue');
@@ -551,12 +715,15 @@
       // Center camera on starting base
       state.camera.x = - (3 * TILE_SIZE - window.innerWidth / 2);
       state.camera.y = - (3 * TILE_SIZE - window.innerHeight / 2);
-      
+
+      refreshDerivedState();
+      syncPersistenceTimestamp();
+      saveGameState();
       updateUIcons();
+      updateUI();
     }
 
     // Entity Factories
-    let idCounter = 1;
 
     function createUnit(type, x, y, faction = 'blue') {
       const isTank = type === 'tank';
@@ -654,7 +821,9 @@
           const dy = unit.targetY - unit.y;
           const dist = Math.hypot(dx, dy);
 
-          if (dist < unit.speed) {
+          const movementStep = unit.speed * (deltaTime / (1000 / 60));
+
+          if (dist < movementStep) {
             unit.x = unit.targetX;
             unit.y = unit.targetY;
 
@@ -664,7 +833,7 @@
               if (bld) {
                 const garrisonedCount = state.units.filter(u => u.garrisonedBuildingId === bld.id).length;
                 const maxCap = bld.capacity || bld.capBonus || 10;
-                
+
                 if (garrisonedCount < maxCap) {
                   unit.garrisonedBuildingId = bld.id;
                   if (bld.type === 'mine' && unit.type === 'civilian') {
@@ -686,8 +855,8 @@
               unit.targetMineId = null;
             }
           } else {
-            unit.x += (dx / dist) * unit.speed;
-            unit.y += (dy / dist) * unit.speed;
+            unit.x += (dx / dist) * movementStep;
+            unit.y += (dy / dist) * movementStep;
           }
 
           const currentTileX = Math.floor(unit.x);
@@ -776,45 +945,7 @@
     // ==========================================
     // 5. ECONOMY & TIME TICK
     // ==========================================
-    let civilianGrowthCounter = 0;
-    setInterval(() => {
-      let miners = 0;
-      state.buildings.forEach(b => {
-        if (b.type === 'mine') {
-          const activeMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId === b.id || u.garrisonedBuildingId === b.id)).length;
-          b.assignedCivilians = activeMiners;
-          miners += activeMiners;
-        }
-      });
-
-      state.resources += miners * (1 / 60);
-
-      // Civilian cap: 10 per residence, no matter where they are (garrisoned or free)
-      const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
-      state.civilianCap = numResidences * 10;
-
-      const allCivs = state.units.filter(u => u.type === 'civilian');
-      state.civilians = allCivs.length;
-      
-      // Spawn logic: grow up to the cap
-      if (state.civilians < state.civilianCap) {
-        civilianGrowthCounter++;
-        if (civilianGrowthCounter >= 5) {
-          // Spawn anywhere; optionally auto-garrison into a residence with space
-          const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
-          const spawnX = res ? res.tileX : 2;
-          const spawnY = res ? res.tileY : 2;
-          const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
-          if (res) newCiv.garrisonedBuildingId = res.id;
-          state.units.push(newCiv);
-          civilianGrowthCounter = 0;
-        }
-      } else {
-        civilianGrowthCounter = 0;
-      }
-
-      updateUI();
-    }, TICK_RATE);
+    setInterval(processEconomyTick, TICK_RATE);
 
     // ==========================================
     // 6. INPUT HANDLING & SELECTION
@@ -1508,8 +1639,14 @@
       updateCombatAndMovement(deltaTime);
       render();
 
+      if (document.visibilityState === 'visible') {
+        syncPersistenceTimestamp();
+        saveGameState();
+      }
+
       requestAnimationFrame(gameLoop);
     }
+
 
     // ==========================================
     // 9. UI UPDATER (WEB PAGE HUD & INSPECTOR PANEL)

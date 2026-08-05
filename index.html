@@ -274,7 +274,6 @@
       max-width: 450px;
       margin: auto;
       box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 20px 60px rgba(0, 0, 0, 0.7);
-      overflow: hidden;
     }
 
     dialog::before, dialog::after { width: 14px; height: 14px; }
@@ -351,7 +350,7 @@
           <button id="btn-deselect" style="display:none; padding: 2px 8px; font-size: 10px;" onclick="deselectEntity()">Deselect</button>
         </div>
         <div id="inspector-details" style="font-size: 12px; color: #9a9f8e; min-height: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">
-          Left-click a unit or structure to select source tile. Left-click another tile to set target destination.
+          Left-click to select a unit or structure. Right-click a tile to move/target it.
         </div>
         <div id="inspector-actions" class="btn-group"></div>
       </div>
@@ -507,7 +506,10 @@
         y: 0,
         zoom: 1.0,
         isDragging: false,
-        dragStart: { x: 0, y: 0 }
+        dragButton: null,
+        dragStart: { x: 0, y: 0 },
+        dragOrigin: { x: 0, y: 0 },
+        dragDistance: 0
       },
 
       // Faction
@@ -818,58 +820,123 @@
     }, TICK_RATE);
 
     // ==========================================
-    // 6. INPUT HANDLING & SELECTION (LEFT CLICK ONLY MOVEMENT)
+    // 6. INPUT HANDLING & SELECTION
+    //    Left click  -> select entity (click same tile again to cycle a stack); places buildings in build mode
+    //    Left drag   -> pan camera
+    //    Right click -> issue move / target order to the selected entity
+    //    Middle drag -> pan camera (alt. to left-drag)
+    //    WASD/Arrows -> pan camera
+    //    Scroll      -> zoom toward cursor
+    //    Escape      -> cancel build mode, else deselect
     // ==========================================
+    const DRAG_THRESHOLD = 5; // px of movement before a left-click becomes a pan instead of a selection
+    let mouseDownInfo = null;
+    let isPanningLeft = false;
+    const keysHeld = new Set();
+    const PAN_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+
+    function setCursor(style) {
+      canvas.style.cursor = style;
+    }
+
+    function updateCursorForMode() {
+      setCursor(state.buildMode ? 'crosshair' : 'default');
+    }
+
     canvas.addEventListener('mousedown', (e) => {
       const world = screenToWorld(e.clientX, e.clientY);
       const tileX = Math.floor(world.x);
       const tileY = Math.floor(world.y);
 
       if (e.button === 0) {
-        // Left Click: Building Placement, Source Entity Selection, or Target Tile Movement
         if (state.buildMode) {
           placeBuilding(state.buildMode, tileX, tileY);
           state.buildMode = null;
+          updateCursorForMode();
+          return;
+        }
+        // Don't act immediately - wait to see if this turns into a drag-to-pan
+        mouseDownInfo = { tileX, tileY };
+        isPanningLeft = false;
+
+      } else if (e.button === 1) {
+        // Middle Click: Camera Pan Dragging
+        state.camera.isDragging = true;
+        state.camera.dragStart = { x: e.clientX, y: e.clientY };
+        setCursor('grabbing');
+
+      } else if (e.button === 2) {
+        // Right Click: Issue Target Tile / Move / Enter command to the selected entity
+        if (state.buildMode) {
+          state.buildMode = null;
+          updateCursorForMode();
           return;
         }
 
         const selected = getSelectedEntity();
-
         if (selected) {
-          const selTileX = selected.entityType === 'unit' ? Math.floor(selected.x) : selected.tileX;
-          const selTileY = selected.entityType === 'unit' ? Math.floor(selected.y) : selected.tileY;
+          state.targetTile = { x: tileX, y: tileY };
 
-          // If clicking a DIFFERENT tile while an entity is selected: issue Target Tile / Move / Enter command!
-          if (tileX !== selTileX || tileY !== selTileY) {
-            state.targetTile = { x: tileX, y: tileY };
+          // Direct move / enter structure command if selected entity is a single deployed unit
+          if (selected.entityType === 'unit' && !selected.garrisonedBuildingId) {
+            selected.targetX = tileX;
+            selected.targetY = tileY;
 
-            // Direct move / enter structure command if selected entity is a single deployed unit
-            if (selected.entityType === 'unit' && !selected.garrisonedBuildingId) {
-              selected.targetX = tileX;
-              selected.targetY = tileY;
-
-              const targetBld = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
-              if (targetBld) {
-                selected.targetBuildingId = targetBld.id;
-                if (targetBld.type === 'mine' && selected.type === 'civilian') {
-                  selected.targetMineId = targetBld.id;
-                } else {
-                  selected.targetMineId = null;
-                }
+            const targetBld = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
+            if (targetBld) {
+              selected.targetBuildingId = targetBld.id;
+              if (targetBld.type === 'mine' && selected.type === 'civilian') {
+                selected.targetMineId = targetBld.id;
               } else {
-                selected.targetBuildingId = null;
                 selected.targetMineId = null;
-                selected.assignedMineId = null;
               }
+            } else {
+              selected.targetBuildingId = null;
+              selected.targetMineId = null;
+              selected.assignedMineId = null;
             }
-            updateUI();
-            return;
           }
+          updateUI();
         }
+      }
+    });
 
-        // If no entity is selected, OR if left-clicking the same tile as the currently selected entity: cycle/select entity
+    canvas.addEventListener('mousemove', (e) => {
+      const world = screenToWorld(e.clientX, e.clientY);
+      state.hoveredTile = { x: Math.floor(world.x), y: Math.floor(world.y) };
+
+      if (state.camera.isDragging) {
+        const dx = e.clientX - state.camera.dragStart.x;
+        const dy = e.clientY - state.camera.dragStart.y;
+        state.camera.x += dx / state.camera.zoom;
+        state.camera.y += dy / state.camera.zoom;
+        state.camera.dragStart = { x: e.clientX, y: e.clientY };
+      } else if (mouseDownInfo) {
+        if (mouseDownInfo.screenX === undefined) {
+          mouseDownInfo.screenX = e.clientX;
+          mouseDownInfo.screenY = e.clientY;
+        }
+        const totalDx = e.clientX - mouseDownInfo.screenX;
+        const totalDy = e.clientY - mouseDownInfo.screenY;
+        if (isPanningLeft || Math.hypot(totalDx, totalDy) > DRAG_THRESHOLD) {
+          if (!isPanningLeft) {
+            isPanningLeft = true;
+            setCursor('grabbing');
+          }
+          state.camera.x += e.movementX / state.camera.zoom;
+          state.camera.y += e.movementY / state.camera.zoom;
+        }
+      }
+
+      updateUI();
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0 && mouseDownInfo && !isPanningLeft) {
+        // A genuine click, no drag: select / cycle the entity on that tile
+        const { tileX, tileY } = mouseDownInfo;
         const unitsOnTile = state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
-        
+
         if (unitsOnTile.length > 0) {
           const currIndex = unitsOnTile.findIndex(u => u.id === state.selectedEntityId);
           if (currIndex !== -1) {
@@ -885,31 +952,12 @@
 
         state.targetTile = null;
         updateUI();
-
-      } else if (e.button === 2 || e.button === 1) {
-        // Right Click / Middle Click: Camera Pan Dragging Only
-        state.camera.isDragging = true;
-        state.camera.dragStart = { x: e.clientX, y: e.clientY };
       }
-    });
 
-    canvas.addEventListener('mousemove', (e) => {
-      const world = screenToWorld(e.clientX, e.clientY);
-      state.hoveredTile = { x: Math.floor(world.x), y: Math.floor(world.y) };
-
-      if (state.camera.isDragging) {
-        const dx = e.clientX - state.camera.dragStart.x;
-        const dy = e.clientY - state.camera.dragStart.y;
-        state.camera.x += dx / state.camera.zoom;
-        state.camera.y += dy / state.camera.zoom;
-        state.camera.dragStart = { x: e.clientX, y: e.clientY };
-      }
-      
-      updateUI();
-    });
-
-    window.addEventListener('mouseup', () => {
+      mouseDownInfo = null;
+      isPanningLeft = false;
       state.camera.isDragging = false;
+      updateCursorForMode();
     });
 
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -917,8 +965,43 @@
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      state.camera.zoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+      const newZoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+
+      // Zoom toward the cursor so the tile under the mouse stays put, instead of drifting
+      const worldBefore = screenToWorld(e.clientX, e.clientY);
+      state.camera.zoom = newZoom;
+      const worldAfter = screenToWorld(e.clientX, e.clientY);
+      state.camera.x += (worldAfter.x - worldBefore.x) * TILE_SIZE;
+      state.camera.y += (worldAfter.y - worldBefore.y) * TILE_SIZE;
     });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (state.buildMode) {
+          state.buildMode = null;
+          updateCursorForMode();
+        } else {
+          deselectEntity();
+        }
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (PAN_KEYS.includes(k)) keysHeld.add(k);
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keysHeld.delete(e.key.toLowerCase());
+    });
+
+    const PAN_SPEED = 0.7; // world px per ms at zoom 1.0
+    function applyKeyboardPan(deltaTime) {
+      if (keysHeld.size === 0) return;
+      const speed = (PAN_SPEED * deltaTime) / state.camera.zoom;
+      if (keysHeld.has('w') || keysHeld.has('arrowup')) state.camera.y += speed;
+      if (keysHeld.has('s') || keysHeld.has('arrowdown')) state.camera.y -= speed;
+      if (keysHeld.has('a') || keysHeld.has('arrowleft')) state.camera.x += speed;
+      if (keysHeld.has('d') || keysHeld.has('arrowright')) state.camera.x -= speed;
+    }
 
     // ==========================================
     // 7. ACTIONS & COMMANDS
@@ -931,6 +1014,7 @@
 
     function setBuildMode(structureType) {
       state.buildMode = structureType;
+      updateCursorForMode();
     }
 
     function placeBuilding(type, tileX, tileY) {
@@ -994,7 +1078,7 @@
     // Unified Structure Garrison & Deployment Dialog System (Works for Any Structure)
     function openStructureGarrisonDialog(building) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please left-click a target destination tile on the grid before deploying garrisoned units.");
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before deploying garrisoned units.");
         return;
       }
 
@@ -1083,7 +1167,7 @@
     // Standardized Target-Aware Dialog for Barracks
     function openBarracksDialog(barracks) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please left-click a target destination tile on the grid before choosing training options.");
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
         return;
       }
 
@@ -1144,7 +1228,7 @@
     // Standardized Target-Aware Dialog for Armory
     function openArmoryDialog(armory) {
       if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please left-click a target destination tile on the grid before choosing training options.");
+        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
         return;
       }
 
@@ -1395,9 +1479,25 @@
       // Render Tile Hover Highlight
       const hx = state.hoveredTile.x * TILE_SIZE + state.camera.x;
       const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
-      ctx.strokeStyle = state.buildMode ? '#7a9d5c' : 'rgba(255, 255, 255, 0.15)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+
+      if (state.buildMode) {
+        const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
+        const cost = costs[state.buildMode] || 0;
+        const occupied = state.buildings.some(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
+        const affordable = state.resources >= cost;
+        const valid = !occupied && affordable;
+
+        const color = valid ? '122, 157, 92' : '193, 68, 58'; // ok green / danger red
+        ctx.fillStyle = `rgba(${color}, 0.18)`;
+        ctx.fillRect(hx, hy, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = `rgb(${color})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+      } else {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+      }
 
       ctx.restore();
     }
@@ -1407,6 +1507,7 @@
       const deltaTime = now - lastTime;
       lastTime = now;
 
+      applyKeyboardPan(deltaTime);
       updateCombatAndMovement(deltaTime);
       render();
 
@@ -1472,13 +1573,13 @@
         }
 
         titleEl.innerText = 'Selection: None';
-        detailsEl.innerText = 'Left-click a unit or structure to select source tile. Left-click another tile to set target destination.';
+        detailsEl.innerText = 'Left-click to select a unit or structure. Right-click a tile to move/target it. Drag (or WASD/arrows) to pan, scroll to zoom, Esc to cancel/deselect.';
         deselectBtn.style.display = 'none';
         return;
       }
 
       deselectBtn.style.display = 'block';
-      const targetText = state.targetTile ? ` | Target: (${state.targetTile.x}, ${state.targetTile.y})` : ' | Target: None (Left-click grid)';
+      const targetText = state.targetTile ? ` | Target: (${state.targetTile.x}, ${state.targetTile.y})` : ' | Target: None (Right-click grid)';
 
       if (entity.entityType === 'unit') {
         const uTileX = Math.floor(entity.x);

@@ -1519,7 +1519,16 @@
       const totalCivs = state.units.filter(u => u.type === 'civilian').length;
       document.getElementById('ui-civilians').innerText = `${totalCivs} / ${state.civilianCap}`;
       
-      let totalMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId != null || u.garrisonedBuildingId != null)).length;
+      let totalMiners = state.units.filter(u => {
+        if (u.type !== 'civilian') return false;
+        if (u.assignedMineId) return true;  // explicitly assigned to a mine
+        // Check if garrisoned in a mine building
+        if (u.garrisonedBuildingId) {
+          const building = state.buildings.find(b => b.id === u.garrisonedBuildingId);
+          return building && building.type === 'mine';
+        }
+        return false;
+      }).length;
       document.getElementById('ui-miners').innerText = totalMiners;
 
       const soldierCount = state.units.filter(u => u.type === 'soldier').length;

@@ -789,21 +789,18 @@
 
       state.resources += miners * (1 / 60);
 
-      // Strictly cap civilians based on total housing capacity across active Residences
-      let totalHousingCap = 0;
-      state.buildings.forEach(b => {
-        if (b.type === 'residence' && b.faction === 'blue') {
-          totalHousingCap += (b.capBonus || 10);
-        }
-      });
-      state.civilianCap = totalHousingCap;
+      // Civilian cap: 10 per residence, no matter where they are (garrisoned or free)
+      const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
+      state.civilianCap = numResidences * 10;
 
-      const currentCivilians = state.units.filter(u => u.type === 'civilian').length;
-      state.civilians = currentCivilians;
-
+      const allCivs = state.units.filter(u => u.type === 'civilian');
+      state.civilians = allCivs.length;
+      
+      // Spawn logic: grow up to the cap
       if (state.civilians < state.civilianCap) {
         civilianGrowthCounter++;
         if (civilianGrowthCounter >= 5) {
+          // Spawn anywhere; optionally auto-garrison into a residence with space
           const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
           const spawnX = res ? res.tileX : 2;
           const spawnY = res ? res.tileY : 2;

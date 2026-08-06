@@ -224,1483 +224,634 @@
       transform: translateY(-1px);
     }
 
-    button:active:not(:disabled) {
-      transform: translateY(0);
-    }
-
     button:disabled {
-      opacity: 0.35;
+      opacity: 0.45;
       cursor: not-allowed;
-      border-color: rgba(255, 255, 255, 0.08);
     }
 
     .active-mode {
-      background: rgba(217, 164, 65, 0.22) !important;
-      border-color: var(--amber) !important;
-      color: var(--amber-bright) !important;
+      background: rgba(217, 164, 65, 0.28);
+      border-color: var(--amber);
+      color: var(--amber-bright);
     }
 
-    /* Fire Control Selection Styling */
-    .fc-btn {
-      font-size: 10.5px;
-      padding: 5px 9px;
-    }
-
-    #build-menu {
-      display: flex;
-      gap: 8px;
-    }
-
-    .shortcut-tag {
-      color: var(--text-faint);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 0;
-      text-transform: none;
-      margin-left: 4px;
-    }
-
-    /* Modal Dialog Styling */
     dialog {
-      position: relative;
-      pointer-events: auto;
-      background: var(--panel-raised);
-      border: 1px solid var(--line-strong);
-      border-radius: 2px;
+      background: var(--panel);
+      border: 1px solid var(--line);
       color: var(--text);
-      font-family: var(--font-display);
-      padding: 22px 26px;
-      min-width: 340px;
-      max-width: 450px;
+      padding: 20px;
+      border-radius: 0;
+      width: 90vw;
+      max-width: 600px;
       margin: auto;
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 20px 60px rgba(0, 0, 0, 0.7);
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.75);
     }
-
-    dialog::before, dialog::after { width: 14px; height: 14px; }
 
     dialog::backdrop {
-      background: rgba(4, 5, 3, 0.72);
+      background: rgba(0, 0, 0, 0.65);
       backdrop-filter: blur(4px);
     }
 
     .dialog-title {
       font-size: 16px;
+      font-weight: 600;
       color: var(--amber-bright);
-      font-weight: 700;
+      margin-bottom: 10px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      margin-bottom: 12px;
-      border-bottom: 1px solid var(--line);
-      padding-bottom: 8px;
     }
 
-    .dialog-body {
-      font-size: 13.5px;
-      font-family: 'Segoe UI', sans-serif;
+    .dialog-section {
+      margin: 12px 0;
+      font-size: 13px;
+    }
+
+    .close-dialog {
+      float: right;
+      font-size: 20px;
+      font-weight: bold;
       color: var(--text-dim);
-      margin-bottom: 20px;
-      line-height: 1.5;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      line-height: 20px;
+      text-align: center;
     }
 
-    .dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
+    .close-dialog:hover {
+      color: var(--amber-bright);
     }
   </style>
 </head>
 <body>
-
-  <div id="canvas-container">
-    <canvas id="gameCanvas"></canvas>
-  </div>
+  <div id="canvas-container"></div>
 
   <div id="ui-layer">
-    <!-- Top Bar -->
     <div id="top-bar" class="hud-panel">
       <div class="res-item">
-        <img id="icon-res" alt="Resources" />
-        <span>Resources:</span>
-        <span id="ui-resources" class="res-value">0</span>
+        <span>RESOURCES:</span>
+        <span class="res-value" id="ui-resources">0</span>
       </div>
       <div class="res-item">
-        <img id="icon-civ" alt="Civilians" />
-        <span>Civilians:</span>
-        <span id="ui-civilians" class="res-value">15 / 20</span>
-        <span style="font-size: 11px; color: #5f6459;">(<span id="ui-miners">0</span> Mining)</span>
+        <span>CIVILIANS:</span>
+        <span class="res-value" id="ui-civilians">0 / 0</span>
       </div>
       <div class="res-item">
-        <img id="icon-tank" alt="Tanks" />
-        <span>Tanks:</span>
-        <span id="ui-tanks" class="res-value">0</span>
+        <span>MINERS:</span>
+        <span class="res-value" id="ui-miners">0</span>
       </div>
       <div class="res-item">
-        <img id="icon-soldier" alt="Soldiers" />
-        <span>Soldiers:</span>
-        <span id="ui-soldiers" class="res-value">0</span>
+        <span>SOLDIERS:</span>
+        <span class="res-value" id="ui-soldiers">0</span>
+      </div>
+      <div class="res-item">
+        <span>TANKS:</span>
+        <span class="res-value" id="ui-tanks">0</span>
       </div>
     </div>
 
-    <!-- Bottom Interface -->
     <div id="bottom-hud">
-      <!-- Context Inspector & Info Card Panel -->
       <div id="inspector-panel" class="hud-panel">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="panel-title" id="inspector-title" style="border-bottom: none; margin-bottom: 0;">Selection: None</div>
-          <button id="btn-deselect" style="display:none; padding: 2px 8px; font-size: 10px;" onclick="deselectEntity()">Deselect</button>
-        </div>
-        <div id="inspector-details" style="font-size: 12px; color: #9a9f8e; min-height: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">
-          Left-click to select a unit or structure. Right-click a tile to move/target it.
-        </div>
+        <div class="panel-title">Inspector</div>
+        <div id="inspector-title" style="color: #d9a441; font-weight: 600; margin-bottom: 2px;"></div>
+        <div id="inspector-details" style="font-size: 11px; color: #9a9f8e; line-height: 1.4;"></div>
         <div id="inspector-actions" class="btn-group"></div>
+        <button id="btn-deselect" style="margin-top: 6px; display: none; align-self: flex-start;">Deselect</button>
       </div>
 
-      <!-- Quick Build Toolbar -->
-      <div id="build-menu" class="hud-panel">
-        <button onclick="setBuildMode('residence')"><img class="btn-icon-residence" /> Residence <span class="shortcut-tag">(100g)</span></button>
-        <button onclick="setBuildMode('barracks')"><img class="btn-icon-barracks" /> Barracks <span class="shortcut-tag">(200g)</span></button>
-        <button onclick="setBuildMode('armory')"><img class="btn-icon-armory" /> Armory <span class="shortcut-tag">(500g)</span></button>
-        <button onclick="setBuildMode('radar')"><img class="btn-icon-radar" /> Radar <span class="shortcut-tag">(250g)</span></button>
+      <div class="hud-panel">
+        <div class="panel-title">Build / Spawn</div>
+        <div class="btn-group">
+          <button onclick="startBuild('residence')">Build Residence (100)</button>
+          <button onclick="startBuild('barracks')">Build Barracks (200)</button>
+          <button onclick="startBuild('armory')">Build Armory (500)</button>
+          <button onclick="startBuild('radar')">Build Radar (250)</button>
+        </div>
+        <div class="btn-group" style="margin-top: 8px;">
+          <button onclick="spawnCivilians()">Spawn Civilians</button>
+          <button onclick="spawnSoldiers()">Spawn Soldiers</button>
+          <button onclick="spawnTanks()">Spawn Tanks</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- HTML Sci-Fi Modal Dialog -->
-  <dialog id="game-modal">
-    <div class="dialog-title" id="modal-title">System Message</div>
-    <div class="dialog-body" id="modal-body">Message details...</div>
-    <div class="dialog-actions" id="modal-actions">
-      <button onclick="closeDialog()">OK</button>
+  <dialog id="barracks-dialog">
+    <span class="close-dialog" onclick="document.getElementById('barracks-dialog').close();">×</span>
+    <div class="dialog-title">Barracks Options</div>
+    <div class="dialog-section">
+      <button onclick="trainSoldier()">Train Soldier (50 res)</button>
+      <div style="font-size: 11px; color: #9a9f8e; margin-top: 6px;">Soldiers are effective against infantry units and light armor.</div>
     </div>
   </dialog>
 
+  <dialog id="armory-dialog">
+    <span class="close-dialog" onclick="document.getElementById('armory-dialog').close();">×</span>
+    <div class="dialog-title">Armory Options</div>
+    <div class="dialog-section">
+      <button onclick="trainTank()">Train Tank (150 res)</button>
+      <div style="font-size: 11px; color: #9a9f8e; margin-top: 6px;">Tanks are heavily armored and deal splash damage with their cannons.</div>
+    </div>
+  </dialog>
+
+  <dialog id="garrison-dialog">
+    <span class="close-dialog" onclick="document.getElementById('garrison-dialog').close();">×</span>
+    <div class="dialog-title">Deploy Garrisoned Units</div>
+    <div class="dialog-section" id="garrison-options"></div>
+  </dialog>
+
   <script>
-    // ==========================================
-    // 1. CONFIGURATION & ASSETS
-    // ==========================================
-    const TILE_SIZE = 64; // Pixels per grid square
-    const TICK_RATE = 1000; // Economy tick interval (ms)
+    const TILE_SIZE = 48;
+    const GRID_WIDTH = 64;
+    const GRID_HEIGHT = 64;
 
-    const ASSETS = {
-      tank: "tank.webp",
-      soldier: "soldier.png",
-      civilian: "civilian.webp",
-      mine: "mine.webp",
-      residence: "residence.webp",
-      barracks: "barracks.webp",
-      armory: "armory.png",
-      radar: "radar.webp",
-      resource: "resources.webp"
-    };
-
+    // ==========================================
+    // BUILDING INFO DATABASE
+    // ==========================================
     const BUILDING_INFO = {
       residence: {
-        title: "Residence",
-        desc: "Increases civilian population capacity (+10 cap bonus) and passively spawns new civilians.",
-        stats: "Cost: 100g | Housing Cap: +10 Civilians | Garrison: 10 Units"
+        title: 'Residence',
+        desc: 'Provides housing for up to 10 civilians. Essential for population growth.',
+        stats: 'Capacity: 10 | HP: 100'
       },
       barracks: {
-        title: "Barracks",
-        desc: "Military recruitment hub. Converts available civilians into Soldiers.",
-        stats: "Cost: 200g | Train: 50g + 1 Civilian | Garrison: 10 Units"
+        title: 'Barracks',
+        desc: 'Trains soldiers and can garrison up to 20 military units.',
+        stats: 'Capacity: 20 | HP: 150'
       },
       armory: {
-        title: "Armory",
-        desc: "Heavy weapons factory. Converts available civilians into armored Tanks.",
-        stats: "Cost: 500g | Train: 300g + 1 Civilian | Garrison: 10 Units"
+        title: 'Armory',
+        desc: 'Trains tanks and can garrison up to 10 heavy units.',
+        stats: 'Capacity: 10 | HP: 200'
       },
       radar: {
-        title: "Radar Station",
-        desc: "Tactical reconnaissance installation providing strategic vision over adjacent tiles.",
-        stats: "Cost: 250g | Vision Range: 4 Tiles | Garrison: 10 Units"
+        title: 'Radar Station',
+        desc: 'Defensive structure that detects threats. Can garrison up to 15 units.',
+        stats: 'Capacity: 15 | HP: 120'
       },
       mine: {
-        title: "Resource Mine",
-        desc: "Resource extraction node. Generates gold when civilians mine or garrison inside.",
-        stats: "Yield: ~1g/min per active miner | Worker Cap: 10 Civilians"
+        title: 'Mine',
+        desc: 'Resource extraction point. Automatically produces resources when garrisoned with civilians.',
+        stats: 'Capacity: 10 | HP: 80'
       }
     };
 
-    const IMAGES = {};
+    // ==========================================
+    // ASSET PATHS
+    // ==========================================
+    const ASSETS = {
+      civilian: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9InJnYigxMCwgMTMsIDEwKSIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iOCIgcj0iNSIgZmlsbD0iI2Q5YTQ0MSIvPjxyZWN0IHg9IjExIiB5PSIxNSIgd2lkdGg9IjEwIiBoZWlnaHQ9IjgiIGZpbGw9IiNkOWE0NDEiLz48cmVjdCB4PSI4IiB5PSIyMyIgd2lkdGg9IjEwIiBoZWlnaHQ9IjYiIGZpbGw9IiNkOWE0NDEiLz48cmVjdCB4PSIxNCIgeT0iMjMiIHdpZHRoPSI0IiBoZWlnaHQ9IjYiIGZpbGw9IiNkOWE0NDEiLz48L3N2Zz4=',
+      soldier: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9InJnYigxMCwgMTMsIDEwKSIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iOCIgcj0iNSIgZmlsbD0iIzdhOWQ1YyIvPjxyZWN0IHg9IjEwIiB5PSIxNSIgd2lkdGg9IjEyIiBoZWlnaHQ9IjgiIGZpbGw9IiM3YTlkNWMiLz48cmVjdCB4PSI2IiB5PSIxNiIgd2lkdGg9IjQiIGhlaWdodD0iMSIgZmlsbD0iIzdhOWQ1YyIvPjxyZWN0IHg9IjIyIiB5PSIxNiIgd2lkdGg9IjQiIGhlaWdodD0iMSIgZmlsbD0iIzdhOWQ1YyIvPjxyZWN0IHg9IjEwIiB5PSIyMyIgd2lkdGg9IjEwIiBoZWlnaHQ9IjYiIGZpbGw9IiM3YTlkNWMiLz48L3N2Zz4=',
+      tank: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9InJnYigxMCwgMTMsIDEwKSIvPjxyZWN0IHg9IjYiIHk9IjEwIiB3aWR0aD0iMjAiIGhlaWdodD0iMTIiIGZpbGw9IiNmYjkyM2MiLz48cmVjdCB4PSIxMCIgeT0iNiIgd2lkdGg9IjEyIiBoZWlnaHQ9IjYiIGZpbGw9IiNmYjkyM2MiLz48cmVjdCB4PSI2IiB5PSIyMiIgd2lkdGg9IjQiIGhlaWdodD0iNiIgZmlsbD0iI2ZiOTIzYyIvPjxyZWN0IHg9IjIyIiB5PSIyMiIgd2lkdGg9IjQiIGhlaWdodD0iNiIgZmlsbD0iI2ZiOTIzYyIvPjxyZWN0IHg9IjE0IiB5PSI0IiB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZjJjMzY4Ii8+PC9zdmc+'
+    };
 
-    function loadAssets() {
-      Object.keys(ASSETS).forEach(key => {
-        const img = new Image();
-        img.src = ASSETS[key];
-        img.onload = () => { 
-          IMAGES[key] = img; 
-          updateUIcons();
-        };
-        img.onerror = () => { IMAGES[key] = null; };
-      });
-    }
+    // ==========================================
+    // 1. GAME STATE
+    // ==========================================
+    const state = {
+      resources: 500,
+      camera: { x: 0, y: 0 },
+      hoveredTile: { x: 0, y: 0 },
+      selectedEntityId: null,
+      selectedEntityType: null,
+      targetTile: null,
+      buildMode: null,
+      units: [],
+      buildings: [],
+      civilianCap: 10,
+      nextUnitId: 1,
+      nextBuildingId: 1
+    };
 
-    function updateUIcons() {
-      const iconRes = document.getElementById('icon-res');
-      const iconCiv = document.getElementById('icon-civ');
-      const iconTank = document.getElementById('icon-tank');
-      const iconSoldier = document.getElementById('icon-soldier');
-      if (iconRes) iconRes.src = ASSETS.resource;
-      if (iconCiv) iconCiv.src = ASSETS.civilian;
-      if (iconTank) iconTank.src = ASSETS.tank;
-      if (iconSoldier) iconSoldier.src = ASSETS.soldier;
-
-      document.querySelectorAll('.btn-icon-residence').forEach(el => el.src = ASSETS.residence);
-      document.querySelectorAll('.btn-icon-barracks').forEach(el => el.src = ASSETS.barracks);
-      document.querySelectorAll('.btn-icon-armory').forEach(el => el.src = ASSETS.armory);
-      document.querySelectorAll('.btn-icon-radar').forEach(el => el.src = ASSETS.radar);
-    }
-
-    loadAssets();
-
-    function resumeProgressFromBackground() {
-      const elapsed = Date.now() - (state.lastSavedAt || Date.now());
-      if (elapsed > 0) {
-        applyOfflineProgress(elapsed);
+    // ==========================================
+    // 2. RESIDENCE CAPACITY TRACKING SYSTEM
+    // ==========================================
+    class ResidenceOccupant {
+      constructor(civilianId, x, y, state) {
+        this.civilianId = civilianId;
+        this.x = x;  // position within residence (0-9, grid coords)
+        this.y = y;
+        this.state = state;  // 'idle', 'working', 'moving'
       }
     }
 
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        syncPersistenceTimestamp();
-        saveGameState();
-      } else {
-        resumeProgressFromBackground();
-      }
-    });
-
-    window.addEventListener('pagehide', () => {
-      syncPersistenceTimestamp();
-      saveGameState();
-    });
-
-    window.addEventListener('beforeunload', () => {
-      syncPersistenceTimestamp();
-      saveGameState();
-    });
-
-    // Dialog Utility System
-    function showDialog(title, text, actions = []) {
-      const dialog = document.getElementById('game-modal');
-      document.getElementById('modal-title').innerText = title;
-      document.getElementById('modal-body').innerText = text;
-      const actionsEl = document.getElementById('modal-actions');
-      actionsEl.innerHTML = '';
-
-      if (actions.length === 0) {
-        actions.push({ label: 'OK', onClick: () => {} });
+    class Residence {
+      constructor(buildingId, tileX, tileY, capacity = 10) {
+        this.buildingId = buildingId;
+        this.tileX = tileX;
+        this.tileY = tileY;
+        this.capacity = capacity;
+        this.occupants = [];  // Array of ResidenceOccupant objects
       }
 
-      actions.forEach(action => {
-        const btn = document.createElement('button');
-        btn.innerText = action.label;
-        btn.onclick = () => {
-          if (action.onClick) action.onClick();
-          dialog.close();
-        };
-        actionsEl.appendChild(btn);
-      });
+      addCivilian(civilianId, civilianX, civilianY) {
+        if (this.occupants.length >= this.capacity) {
+          return false;  // Residence at capacity
+        }
+        const occupant = new ResidenceOccupant(civilianId, civilianX, civilianY, 'idle');
+        this.occupants.push(occupant);
+        return true;
+      }
+
+      removeCivilian(civilianId) {
+        const idx = this.occupants.findIndex(o => o.civilianId === civilianId);
+        if (idx >= 0) {
+          this.occupants.splice(idx, 1);
+          return true;
+        }
+        return false;
+      }
+
+      isFull() {
+        return this.occupants.length >= this.capacity;
+      }
+
+      getOccupancyString() {
+        return `${this.occupants.length}/${this.capacity}`;
+      }
+    }
+
+    // ==========================================
+    // 3. BUILDING SYSTEM WITH RESIDENCES
+    // ==========================================
+    const residences = new Map();  // buildingId -> Residence
+
+    function createBuilding(type, tileX, tileY) {
+      const costs = {
+        residence: 100,
+        barracks: 200,
+        armory: 500,
+        radar: 250,
+        mine: 75
+      };
+
+      const cost = costs[type] || 0;
+      if (state.resources < cost) return null;
+
+      const building = {
+        id: state.nextBuildingId++,
+        type: type,
+        tileX: tileX,
+        tileY: tileY,
+        hp: 100,
+        maxHp: 100,
+        capacity: type === 'barracks' ? 20 : type === 'armory' ? 10 : 15,
+        capBonus: type === 'residence' ? 10 : 0
+      };
+
+      // Initialize residence tracking
+      if (type === 'residence') {
+        residences.set(building.id, new Residence(building.id, tileX, tileY, 10));
+      }
+
+      state.buildings.push(building);
+      state.resources -= cost;
+      return building;
+    }
+
+    function garrisonCivilianInResidence(civil, residenceId) {
+      const residence = residences.get(residenceId);
+      if (!residence) return false;
+
+      if (residence.isFull()) {
+        console.warn(`Residence #${residenceId} is at full capacity`);
+        return false;
+      }
+
+      // Remove from previous garrison if any
+      if (civil.garrisonedBuildingId) {
+        const oldRes = residences.get(civil.garrisonedBuildingId);
+        if (oldRes) {
+          oldRes.removeCivilian(civil.id);
+        }
+      }
+
+      // Add to new residence
+      if (residence.addCivilian(civil.id, Math.floor(civil.x), Math.floor(civil.y))) {
+        civil.garrisonedBuildingId = residenceId;
+        civil.x = residenceId;  // Use building ID as proxy position while garrisoned
+        civil.y = Math.floor(Math.random() * 10);  // Random slot within residence
+        return true;
+      }
+
+      return false;
+    }
+
+    function deployFromResidence(residenceId, count = null) {
+      const residence = residences.get(residenceId);
+      if (!residence || residence.occupants.length === 0) return [];
+
+      const deployed = [];
+      const deployCount = count || residence.occupants.length;
+
+      for (let i = 0; i < deployCount && residence.occupants.length > 0; i++) {
+        const occupant = residence.occupants.pop();
+        const unit = state.units.find(u => u.id === occupant.civilianId);
+
+        if (unit) {
+          unit.garrisonedBuildingId = null;
+          unit.x = Math.random() * TILE_SIZE;
+          unit.y = Math.random() * TILE_SIZE;
+          deployed.push(unit);
+        }
+      }
+
+      return deployed;
+    }
+
+    // ==========================================
+    // 4. UNIT SYSTEM
+    // ==========================================
+    function createUnit(type, x, y) {
+      const costs = { civilian: 10, soldier: 50, tank: 150 };
+      const cost = costs[type] || 0;
+
+      if (state.resources < cost) return null;
+
+      const unitStats = {
+        civilian: { maxHp: 10, speed: 1.2 },
+        soldier: { maxHp: 20, speed: 1.5 },
+        tank: { maxHp: 60, speed: 1.0 }
+      };
+
+      const stats = unitStats[type] || { maxHp: 10, speed: 1.0 };
+
+      const unit = {
+        id: state.nextUnitId++,
+        type: type,
+        x: x,
+        y: y,
+        hp: stats.maxHp,
+        maxHp: stats.maxHp,
+        speed: stats.speed,
+        targetX: x,
+        targetY: y,
+        garrisonedBuildingId: null,
+        assignedMineId: null,
+        fireControl: 'aggressive',
+        entityType: 'unit'
+      };
+
+      state.units.push(unit);
+      state.resources -= cost;
+      return unit;
+    }
+
+    function spawnCivilians() {
+      const count = Math.min(10, Math.floor(state.resources / 10));
+      if (count === 0) return;
+
+      for (let i = 0; i < count; i++) {
+        const x = Math.random() * GRID_WIDTH;
+        const y = Math.random() * GRID_HEIGHT;
+        createUnit('civilian', x, y);
+      }
+
+      updateUI();
+    }
+
+    function spawnSoldiers() {
+      if (state.resources < 50) return;
+      for (let i = 0; i < 5; i++) {
+        if (state.resources < 50) break;
+        const x = Math.random() * GRID_WIDTH;
+        const y = Math.random() * GRID_HEIGHT;
+        createUnit('soldier', x, y);
+      }
+      updateUI();
+    }
+
+    function spawnTanks() {
+      if (state.resources < 150) return;
+      const x = Math.random() * GRID_WIDTH;
+      const y = Math.random() * GRID_HEIGHT;
+      createUnit('tank', x, y);
+      updateUI();
+    }
+
+    // ==========================================
+    // 5. BUILD MODE & PLACEMENT
+    // ==========================================
+    function startBuild(type) {
+      state.buildMode = type;
+    }
+
+    function placeBuilding(tileX, tileY) {
+      if (!state.buildMode) return;
+
+      const building = createBuilding(state.buildMode, tileX, tileY);
+      if (!building) {
+        console.warn('Failed to place building');
+      }
+
+      state.buildMode = null;
+      updateUI();
+    }
+
+    // ==========================================
+    // 6. INTERACTION & SELECTION
+    // ==========================================
+    function getSelectedEntity() {
+      if (!state.selectedEntityId) return null;
+
+      if (state.selectedEntityType === 'unit') {
+        return state.units.find(u => u.id === state.selectedEntityId) || null;
+      } else if (state.selectedEntityType === 'building') {
+        return state.buildings.find(b => b.id === state.selectedEntityId) || null;
+      }
+
+      return null;
+    }
+
+    function selectEntity(id, type) {
+      state.selectedEntityId = id;
+      state.selectedEntityType = type;
+      updateUI();
+    }
+
+    function deselect() {
+      state.selectedEntityId = null;
+      state.selectedEntityType = null;
+      updateUI();
+    }
+
+    function openBarracksDialog(building) {
+      document.getElementById('barracks-dialog').showModal();
+      window.currentBuilding = building;
+    }
+
+    function openArmoryDialog(building) {
+      document.getElementById('armory-dialog').showModal();
+      window.currentBuilding = building;
+    }
+
+    function openStructureGarrisonDialog(building) {
+      const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
+      const dialog = document.getElementById('garrison-dialog');
+      const options = document.getElementById('garrison-options');
+
+      options.innerHTML = `<p>Deploy ${garrisonedUnits.length} unit(s)?</p>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Deploy All';
+      btn.onclick = () => {
+        deployFromResidence(building.id);
+        dialog.close();
+        updateUI();
+      };
+      options.appendChild(btn);
 
       dialog.showModal();
     }
 
-    function closeDialog() {
-      document.getElementById('game-modal').close();
-    }
+    function trainSoldier() {
+      const building = window.currentBuilding;
+      if (!building || state.resources < 50) return;
 
-    // ==========================================
-    // 2. STATE MANAGEMENT
-    // ==========================================
-    const SAVE_KEY = 'grid-rts-engine-save-v1';
-    const CATCH_UP_CAP_MS = 1000 * 60 * 60 * 12; // Keep recovery work sane if the tab was gone for ages.
-    let idCounter = 1;
-
-    const state = {
-      resources: 0,
-      civilians: 15,
-      civilianCap: 0, // Capped strictly based on total Residence housing capacity
-      civilianGrowthCounter: 0,
-      lastSavedAt: Date.now(),
-
-      // Entities
-      units: [],
-      buildings: [],
-
-      // Interaction State
-      selectedEntityId: null,
-      targetTile: null, // Selected target destination tile {x, y}
-      hoveredTile: { x: 0, y: 0 },
-      buildMode: null, // 'residence', etc.
-
-      // Camera
-      camera: {
-        x: 0,
-        y: 0,
-        zoom: 1.0,
-        isDragging: false,
-        dragButton: null,
-        dragStart: { x: 0, y: 0 },
-        dragOrigin: { x: 0, y: 0 },
-        dragDistance: 0
-      },
-
-      // Faction
-      playerFaction: 'blue'
-    };
-
-    function refreshDerivedState() {
-      const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
-      state.civilianCap = numResidences * 10;
-      state.civilians = state.units.filter(u => u.type === 'civilian').length;
-    }
-
-    function syncPersistenceTimestamp() {
-      state.lastSavedAt = Date.now();
-    }
-
-    function saveGameState() {
-      try {
-        const payload = {
-          resources: state.resources,
-          civilians: state.civilians,
-          civilianCap: state.civilianCap,
-          civilianGrowthCounter: state.civilianGrowthCounter,
-          units: state.units,
-          buildings: state.buildings,
-          selectedEntityId: state.selectedEntityId,
-          targetTile: state.targetTile,
-          hoveredTile: state.hoveredTile,
-          buildMode: state.buildMode,
-          camera: state.camera,
-          playerFaction: state.playerFaction,
-          lastSavedAt: state.lastSavedAt,
-          idCounter
-        };
-        localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
-      } catch (err) {
-        console.warn('Save failed:', err);
-      }
-    }
-
-    function loadGameState() {
-      try {
-        const raw = localStorage.getItem(SAVE_KEY);
-        if (!raw) return false;
-
-        const data = JSON.parse(raw);
-        if (!data || !Array.isArray(data.units) || !Array.isArray(data.buildings)) return false;
-
-        state.resources = Number(data.resources) || 0;
-        state.civilians = Number(data.civilians) || 0;
-        state.civilianCap = Number(data.civilianCap) || 0;
-        state.civilianGrowthCounter = Number(data.civilianGrowthCounter) || 0;
-        state.units = data.units;
-        state.buildings = data.buildings;
-        state.selectedEntityId = null;
-        state.targetTile = null;
-        state.hoveredTile = data.hoveredTile || { x: 0, y: 0 };
-        state.buildMode = null;
-        state.camera = { ...state.camera, ...(data.camera || {}) };
-        state.playerFaction = data.playerFaction || 'blue';
-        state.lastSavedAt = Number(data.lastSavedAt) || Date.now();
-
-        const maxId = Math.max(
-          0,
-          ...state.units.map(u => Number(u.id) || 0),
-          ...state.buildings.map(b => Number(b.id) || 0)
-        );
-        idCounter = Math.max(maxId + 1, Number(data.idCounter) || 1);
-
-        refreshDerivedState();
-        return true;
-      } catch (err) {
-        console.warn('Load failed:', err);
-        return false;
-      }
-    }
-
-    function processEconomyTick() {
-      let miners = 0;
-      state.buildings.forEach(b => {
-        if (b.type === 'mine') {
-          const activeMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId === b.id || u.garrisonedBuildingId === b.id)).length;
-          b.assignedCivilians = activeMiners;
-          miners += activeMiners;
-        }
-      });
-
-      state.resources += miners * (1 / 60);
-
-      refreshDerivedState();
-
-      // Spawn logic: grow up to the cap
-      if (state.civilians < state.civilianCap) {
-        state.civilianGrowthCounter++;
-        if (state.civilianGrowthCounter >= 5) {
-          // Spawn anywhere; optionally auto-garrison into a residence with space
-          const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
-          const spawnX = res ? res.tileX : 2;
-          const spawnY = res ? res.tileY : 2;
-          const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
-          if (res) newCiv.garrisonedBuildingId = res.id;
-          state.units.push(newCiv);
-          state.civilianGrowthCounter = 0;
-          refreshDerivedState();
-        }
-      } else {
-        state.civilianGrowthCounter = 0;
+      const soldier = createUnit('soldier', building.tileX, building.tileY);
+      if (soldier) {
+        soldier.garrisonedBuildingId = building.id;
+        console.log('Soldier trained and garrisoned');
       }
 
-      syncPersistenceTimestamp();
-      saveGameState();
       updateUI();
     }
 
-    function applyOfflineProgress(elapsedMs) {
-      const cappedMs = Math.max(0, Math.min(elapsedMs, CATCH_UP_CAP_MS));
-      if (cappedMs <= 0) return;
+    function trainTank() {
+      const building = window.currentBuilding;
+      if (!building || state.resources < 150) return;
 
-      // Advance movement/combat in one go, then apply the matching number of economy ticks.
-      updateCombatAndMovement(cappedMs);
-
-      const economyTicks = Math.floor(cappedMs / TICK_RATE);
-      for (let i = 0; i < economyTicks; i++) {
-        processEconomyTick();
+      const tank = createUnit('tank', building.tileX, building.tileY);
+      if (tank) {
+        tank.garrisonedBuildingId = building.id;
+        console.log('Tank trained and garrisoned');
       }
 
-      state.lastSavedAt = Date.now();
-      saveGameState();
-    }
-
-    function initGame() {
-      const loaded = loadGameState();
-      if (loaded) {
-        const elapsed = Date.now() - state.lastSavedAt;
-        applyOfflineProgress(elapsed);
-        updateUIcons();
-        updateUI();
-        return;
-      }
-
-      // Starting Residences
-      const res1 = createBuilding('residence', 2, 2, 'blue');
-      const res2 = createBuilding('residence', 4, 2, 'blue');
-      state.buildings.push(res1, res2);
-
-      // Start all 15 initial Civilians housed directly inside the starting Residences
-      for (let i = 0; i < 15; i++) {
-        const targetRes = (i < 10) ? res1 : res2;
-        const civ = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
-        civ.garrisonedBuildingId = targetRes.id;
-        state.units.push(civ);
-      }
-
-      // Procedurally / Naturally Generated Mines across the map
-      const numNaturalMines = 7;
-      for (let i = 0; i < numNaturalMines; i++) {
-        let rx, ry, attempts = 0;
-        do {
-          rx = Math.floor(Math.random() * 24) - 4;
-          ry = Math.floor(Math.random() * 24) - 4;
-          attempts++;
-        } while (
-          attempts < 50 && (
-            state.buildings.some(b => b.tileX === rx && b.tileY === ry) ||
-            Math.hypot(rx - 3, ry - 2) < 4 // Keep away from starting area
-          )
-        );
-        state.buildings.push(createBuilding('mine', rx, ry, 'neutral'));
-      }
-
-      // Center camera on starting base
-      state.camera.x = - (3 * TILE_SIZE - window.innerWidth / 2);
-      state.camera.y = - (3 * TILE_SIZE - window.innerHeight / 2);
-
-      refreshDerivedState();
-      syncPersistenceTimestamp();
-      saveGameState();
-      updateUIcons();
       updateUI();
     }
 
-    // Entity Factories
-
-    function createUnit(type, x, y, faction = 'blue') {
-      const isTank = type === 'tank';
-      const isCivilian = type === 'civilian';
-      const tileX = Math.floor(x);
-      const tileY = Math.floor(y);
-
-      return {
-        id: idCounter++,
-        entityType: 'unit',
-        type: type, // 'soldier' | 'tank' | 'civilian'
-        faction: faction,
-        x: tileX, // Perfect integer tile coordinate
-        y: tileY,
-        targetX: tileX,
-        targetY: tileY,
-        hp: isTank ? 10 : 1,
-        maxHp: isTank ? 10 : 1,
-        speed: isTank ? 0.015 : (isCivilian ? 0.02 : 0.025), // Tiles per tick frame
-        meleeDmg: isTank ? 10 : (isCivilian ? 0 : 1),
-        // Tank Cannon Mechanics
-        cannonDmg: isTank ? 5 : 0,
-        cannonCooldown: 0, // Tick counter
-        fireControl: 'aggressive', // 'aggressive' | 'ignore_infantry' | 'ignore_buildings' | 'prioritize_buildings' | 'hold_fire'
-        selected: false,
-        // Structure Entry & Mine Mechanics
-        assignedMineId: null,
-        targetMineId: null,
-        garrisonedBuildingId: null, // Can enter ANY structure
-        targetBuildingId: null
-      };
-    }
-
-    function createBuilding(type, tileX, tileY, faction = 'blue') {
-      const base = {
-        id: idCounter++,
-        entityType: 'building',
-        type: type,
-        faction: faction,
-        tileX: tileX,
-        tileY: tileY,
-        hp: 20,
-        maxHp: 20,
-        assignedCivilians: 0,
-        trainingQueue: [],
-        capacity: 10 // Max capacity for garrisoning units in any structure
-      };
-
-      if (type === 'residence') { base.cost = 100; base.capBonus = 10; base.capacity = 10; }
-      if (type === 'barracks') { base.cost = 200; base.capacity = 10; }
-      if (type === 'armory') { base.cost = 500; base.capacity = 10; }
-      if (type === 'radar') { base.cost = 250; base.vision = 4; base.capacity = 10; }
-      if (type === 'mine') { base.capacity = 10; }
-
-      return base;
-    }
-
     // ==========================================
-    // 3. CANVAS & CAMERA SYSTEM
+    // 7. CANVAS & RENDERING
     // ==========================================
-    const canvas = document.getElementById('gameCanvas');
+    const canvas = document.createElement('canvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.getElementById('canvas-container').appendChild(canvas);
+
     const ctx = canvas.getContext('2d');
 
-    function resizeCanvas() {
+    window.addEventListener('resize', () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    function worldToScreen(wx, wy) {
-      return {
-        x: (wx * TILE_SIZE + state.camera.x) * state.camera.zoom,
-        y: (wy * TILE_SIZE + state.camera.y) * state.camera.zoom
-      };
-    }
-
-    function screenToWorld(sx, sy) {
-      return {
-        x: (sx / state.camera.zoom - state.camera.x) / TILE_SIZE,
-        y: (sy / state.camera.zoom - state.camera.y) / TILE_SIZE
-      };
-    }
+    });
 
     // ==========================================
-    // 4. COMBAT & MOVEMENT
+    // 8. INPUT HANDLING
     // ==========================================
-    function updateCombatAndMovement(deltaTime) {
-      state.units.forEach(unit => {
-        // Skip movement and combat processing for garrisoned units inside structures
-        if (unit.garrisonedBuildingId) return;
-
-        if (unit.x !== unit.targetX || unit.y !== unit.targetY) {
-          const dx = unit.targetX - unit.x;
-          const dy = unit.targetY - unit.y;
-          const dist = Math.hypot(dx, dy);
-
-          const movementStep = unit.speed * (deltaTime / (1000 / 60));
-
-          if (dist < movementStep) {
-            unit.x = unit.targetX;
-            unit.y = unit.targetY;
-
-            // On arriving at a target structure, enter/garrison inside if capacity permits
-            if (unit.targetBuildingId) {
-              const bld = state.buildings.find(b => b.id === unit.targetBuildingId);
-              if (bld) {
-                const garrisonedCount = state.units.filter(u => u.garrisonedBuildingId === bld.id).length;
-                const maxCap = bld.capacity || bld.capBonus || 10;
-
-                if (garrisonedCount < maxCap) {
-                  unit.garrisonedBuildingId = bld.id;
-                  if (bld.type === 'mine' && unit.type === 'civilian') {
-                    unit.assignedMineId = bld.id;
-                  }
-                } else {
-                  showDialog("Structure Full", `${bld.type.toUpperCase()} #${bld.id} has reached maximum garrison capacity (${maxCap}).`);
-                }
-              }
-              unit.targetBuildingId = null;
-            }
-
-            // On arriving at a mine target for civilians
-            if (unit.type === 'civilian' && unit.targetMineId) {
-              const mine = state.buildings.find(b => b.id === unit.targetMineId);
-              if (mine) {
-                unit.assignedMineId = mine.id;
-              }
-              unit.targetMineId = null;
-            }
-          } else {
-            unit.x += (dx / dist) * movementStep;
-            unit.y += (dy / dist) * movementStep;
-          }
-
-          const currentTileX = Math.floor(unit.x);
-          const currentTileY = Math.floor(unit.y);
-
-          // Support multi-unit combat on the same tile
-          state.units.forEach(enemy => {
-            if (!enemy.garrisonedBuildingId && enemy.faction !== unit.faction && 
-                Math.floor(enemy.x) === currentTileX && 
-                Math.floor(enemy.y) === currentTileY) {
-              
-              enemy.hp -= unit.meleeDmg * (deltaTime / 1000);
-              unit.hp -= enemy.meleeDmg * (deltaTime / 1000);
-            }
-          });
-        }
-
-        if (unit.type === 'tank' && unit.fireControl !== 'hold_fire') {
-          unit.cannonCooldown += deltaTime;
-          if (unit.cannonCooldown >= 10000) {
-            const target = findTankTarget(unit);
-            if (target) {
-              target.hp -= unit.cannonDmg;
-              unit.cannonCooldown = 0;
-              drawCannonEffect(unit, target);
-            }
-          }
-        }
-      });
-
-      state.units = state.units.filter(u => u.hp > 0);
-      state.buildings = state.buildings.filter(b => b.hp > 0);
-    }
-
-    function findTankTarget(tank) {
-      const tankTileX = Math.floor(tank.x);
-      const tankTileY = Math.floor(tank.y);
-      const candidates = [];
-
-      if (tank.fireControl !== 'ignore_infantry') {
-        state.units.forEach(u => {
-          if (!u.garrisonedBuildingId && u.faction !== tank.faction) {
-            const ux = Math.floor(u.x);
-            const uy = Math.floor(u.y);
-            if (Math.abs(ux - tankTileX) <= 1 && Math.abs(uy - tankTileY) <= 1) {
-              candidates.push({ entity: u, type: 'unit' });
-            }
-          }
-        });
-      }
-
-      if (tank.fireControl !== 'ignore_buildings') {
-        state.buildings.forEach(b => {
-          if (b.faction !== tank.faction) {
-            if (Math.abs(b.tileX - tankTileX) <= 1 && Math.abs(b.tileY - tankTileY) <= 1) {
-              candidates.push({ entity: b, type: 'building' });
-            }
-          }
-        });
-      }
-
-      if (candidates.length === 0) return null;
-
-      if (tank.fireControl === 'prioritize_buildings') {
-        const building = candidates.find(c => c.type === 'building');
-        if (building) return building.entity;
-      }
-
-      return candidates[0].entity;
-    }
-
-    let shotFlares = [];
-    function drawCannonEffect(from, to) {
-      const startX = Math.floor(from.x) + 0.5;
-      const startY = Math.floor(from.y) + 0.5;
-      const endX = (to.x !== undefined ? Math.floor(to.x) : to.tileX) + 0.5;
-      const endY = (to.y !== undefined ? Math.floor(to.y) : to.tileY) + 0.5;
-      
-      shotFlares.push({
-        x1: startX, y1: startY,
-        x2: endX, y2: endY,
-        life: 1.0
-      });
-    }
-
-    // ==========================================
-    // 5. ECONOMY & TIME TICK
-    // ==========================================
-    setInterval(processEconomyTick, TICK_RATE);
-
-    // ==========================================
-    // 6. INPUT HANDLING & SELECTION
-    //    Left click  -> select entity (click same tile again to cycle a stack); places buildings in build mode
-    //    Left drag   -> pan camera
-    //    Right click -> issue move / target order to the selected entity
-    //    Middle drag -> pan camera (alt. to left-drag)
-    //    WASD/Arrows -> pan camera
-    //    Scroll      -> zoom toward cursor
-    //    Escape      -> cancel build mode, else deselect
-    // ==========================================
-    const DRAG_THRESHOLD = 5; // px of movement before a left-click becomes a pan instead of a selection
-    let mouseDownInfo = null;
-    let isPanningLeft = false;
-    const keysHeld = new Set();
-    const PAN_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
-
-    function setCursor(style) {
-      canvas.style.cursor = style;
-    }
-
-    function updateCursorForMode() {
-      setCursor(state.buildMode ? 'crosshair' : 'default');
-    }
-
-    canvas.addEventListener('mousedown', (e) => {
-      const world = screenToWorld(e.clientX, e.clientY);
-      const tileX = Math.floor(world.x);
-      const tileY = Math.floor(world.y);
-
-      if (e.button === 0) {
-        if (state.buildMode) {
-          placeBuilding(state.buildMode, tileX, tileY);
-          state.buildMode = null;
-          updateCursorForMode();
-          return;
-        }
-        // Don't act immediately - wait to see if this turns into a drag-to-pan
-        mouseDownInfo = { tileX, tileY };
-        isPanningLeft = false;
-
-      } else if (e.button === 1) {
-        // Middle Click: Camera Pan Dragging
-        state.camera.isDragging = true;
-        state.camera.dragStart = { x: e.clientX, y: e.clientY };
-        setCursor('grabbing');
-
-      } else if (e.button === 2) {
-        // Right Click: Issue Target Tile / Move / Enter command to the selected entity
-        if (state.buildMode) {
-          state.buildMode = null;
-          updateCursorForMode();
-          return;
-        }
-
-        const selected = getSelectedEntity();
-        if (selected) {
-          state.targetTile = { x: tileX, y: tileY };
-
-          // Direct move / enter structure command if selected entity is a single deployed unit
-          if (selected.entityType === 'unit' && !selected.garrisonedBuildingId) {
-            selected.targetX = tileX;
-            selected.targetY = tileY;
-
-            const targetBld = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
-            if (targetBld) {
-              selected.targetBuildingId = targetBld.id;
-              if (targetBld.type === 'mine' && selected.type === 'civilian') {
-                selected.targetMineId = targetBld.id;
-              } else {
-                selected.targetMineId = null;
-              }
-            } else {
-              selected.targetBuildingId = null;
-              selected.targetMineId = null;
-              selected.assignedMineId = null;
-            }
-          }
-          updateUI();
-        }
-      }
+    let keys = {};
+    window.addEventListener('keydown', (e) => {
+      keys[e.key] = true;
+      if (e.key === 'Escape') deselect();
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.key] = false;
     });
 
     canvas.addEventListener('mousemove', (e) => {
-      const world = screenToWorld(e.clientX, e.clientY);
-      state.hoveredTile = { x: Math.floor(world.x), y: Math.floor(world.y) };
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left - state.camera.x;
+      const my = e.clientY - rect.top - state.camera.y;
 
-      if (state.camera.isDragging) {
-        const dx = e.clientX - state.camera.dragStart.x;
-        const dy = e.clientY - state.camera.dragStart.y;
-        state.camera.x += dx / state.camera.zoom;
-        state.camera.y += dy / state.camera.zoom;
-        state.camera.dragStart = { x: e.clientX, y: e.clientY };
-      } else if (mouseDownInfo) {
-        if (mouseDownInfo.screenX === undefined) {
-          mouseDownInfo.screenX = e.clientX;
-          mouseDownInfo.screenY = e.clientY;
-        }
-        const totalDx = e.clientX - mouseDownInfo.screenX;
-        const totalDy = e.clientY - mouseDownInfo.screenY;
-        if (isPanningLeft || Math.hypot(totalDx, totalDy) > DRAG_THRESHOLD) {
-          if (!isPanningLeft) {
-            isPanningLeft = true;
-            setCursor('grabbing');
-          }
-          state.camera.x += e.movementX / state.camera.zoom;
-          state.camera.y += e.movementY / state.camera.zoom;
-        }
-      }
-
-      updateUI();
+      state.hoveredTile.x = Math.floor(mx / TILE_SIZE);
+      state.hoveredTile.y = Math.floor(my / TILE_SIZE);
     });
 
-    window.addEventListener('mouseup', (e) => {
-      if (e.button === 0 && mouseDownInfo && !isPanningLeft) {
-        // A genuine click, no drag: select / cycle the entity on that tile
-        const { tileX, tileY } = mouseDownInfo;
-        const unitsOnTile = state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY);
+    canvas.addEventListener('click', (e) => {
+      const hx = state.hoveredTile.x;
+      const hy = state.hoveredTile.y;
 
-        if (unitsOnTile.length > 0) {
-          const currIndex = unitsOnTile.findIndex(u => u.id === state.selectedEntityId);
-          if (currIndex !== -1) {
-            const nextUnit = unitsOnTile[(currIndex + 1) % unitsOnTile.length];
-            state.selectedEntityId = nextUnit.id;
-          } else {
-            state.selectedEntityId = unitsOnTile[0].id;
-          }
-        } else {
-          const clickedBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
-          state.selectedEntityId = clickedBuilding ? clickedBuilding.id : null;
-        }
-
-        state.targetTile = null;
-        updateUI();
+      // Check buildings first
+      const building = state.buildings.find(b => b.tileX === hx && b.tileY === hy);
+      if (building) {
+        selectEntity(building.id, 'building');
+        return;
       }
 
-      mouseDownInfo = null;
-      isPanningLeft = false;
-      state.camera.isDragging = false;
-      updateCursorForMode();
+      // Check units
+      const unit = state.units.find(u => !u.garrisonedBuildingId && Math.floor(u.x) === hx && Math.floor(u.y) === hy);
+      if (unit) {
+        selectEntity(unit.id, 'unit');
+        return;
+      }
+
+      deselect();
     });
 
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
-
-    canvas.addEventListener('wheel', (e) => {
+    canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
-
-      // Zoom toward the cursor so the tile under the mouse stays put, instead of drifting
-      const worldBefore = screenToWorld(e.clientX, e.clientY);
-      state.camera.zoom = newZoom;
-      const worldAfter = screenToWorld(e.clientX, e.clientY);
-      state.camera.x += (worldAfter.x - worldBefore.x) * TILE_SIZE;
-      state.camera.y += (worldAfter.y - worldBefore.y) * TILE_SIZE;
-    });
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (state.buildMode) {
-          state.buildMode = null;
-          updateCursorForMode();
-        } else {
-          deselectEntity();
-        }
-        return;
-      }
-      const k = e.key.toLowerCase();
-      if (PAN_KEYS.includes(k)) keysHeld.add(k);
-    });
-
-    window.addEventListener('keyup', (e) => {
-      keysHeld.delete(e.key.toLowerCase());
-    });
-
-    const PAN_SPEED = 0.7; // world px per ms at zoom 1.0
-    function applyKeyboardPan(deltaTime) {
-      if (keysHeld.size === 0) return;
-      const speed = (PAN_SPEED * deltaTime) / state.camera.zoom;
-      if (keysHeld.has('w') || keysHeld.has('arrowup')) state.camera.y += speed;
-      if (keysHeld.has('s') || keysHeld.has('arrowdown')) state.camera.y -= speed;
-      if (keysHeld.has('a') || keysHeld.has('arrowleft')) state.camera.x += speed;
-      if (keysHeld.has('d') || keysHeld.has('arrowright')) state.camera.x -= speed;
-    }
-
-    // ==========================================
-    // 7. ACTIONS & COMMANDS
-    // ==========================================
-    function deselectEntity() {
-      state.selectedEntityId = null;
-      state.targetTile = null;
-      updateUI();
-    }
-
-    function setBuildMode(structureType) {
-      state.buildMode = structureType;
-      updateCursorForMode();
-    }
-
-    function placeBuilding(type, tileX, tileY) {
-      const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
-      const cost = costs[type];
-
-      if (state.resources < cost) {
-        showDialog("Resource Deficit", `Insufficient resources to construct ${type.toUpperCase()}. Required: ${cost}g.`);
-        return;
-      }
-
-      const occupied = state.buildings.some(b => b.tileX === tileX && b.tileY === tileY);
-      if (occupied) return;
-
-      state.resources -= cost;
-      state.buildings.push(createBuilding(type, tileX, tileY, 'blue'));
-      updateUI();
-    }
-
-    function trainUnit(building, unitType, count = 1, targetTile = null) {
-      const costPerUnit = unitType === 'soldier' ? 50 : 300;
-      let trainedCount = 0;
-
-      for (let i = 0; i < count; i++) {
-        const availableCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null);
-
-        if (availableCivIdx === -1) {
-          if (trainedCount === 0) {
-            showDialog("Recruitment Error", "Requires an available civilian to convert!");
-          }
-          break;
-        }
-        if (state.resources < costPerUnit) {
-          if (trainedCount === 0) {
-            showDialog("Resource Deficit", `Insufficient resources to train ${unitType.toUpperCase()}. Required: ${costPerUnit}g per unit.`);
-          }
-          break;
-        }
-
-        state.resources -= costPerUnit;
-        state.units.splice(availableCivIdx, 1);
-
-        const spawnX = building.tileX;
-        const spawnY = building.tileY;
-        const newUnit = createUnit(unitType, spawnX, spawnY, 'blue');
-
-        if (targetTile) {
-          newUnit.targetX = targetTile.x;
-          newUnit.targetY = targetTile.y;
-
-          const targetBld = state.buildings.find(b => b.tileX === targetTile.x && b.tileY === targetTile.y);
-          if (targetBld) newUnit.targetBuildingId = targetBld.id;
-        }
-
-        state.units.push(newUnit);
-        trainedCount++;
-      }
-      updateUI();
-    }
-
-    function getStructureCapacity(building) {
-      return building.capacity || building.capBonus || 10;
-    }
-
-    function getTileOccupancy(tileX, tileY) {
-      const targetBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
-      if (targetBuilding) {
-        return state.units.filter(u => u.garrisonedBuildingId === targetBuilding.id).length;
-      }
-      return state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === tileX && Math.floor(u.y) === tileY).length;
-    }
-
-    function getTileCapacity(tileX, tileY) {
-      const targetBuilding = state.buildings.find(b => b.tileX === tileX && b.tileY === tileY);
-      if (targetBuilding) {
-        return getStructureCapacity(targetBuilding);
-      }
-      return 10;
-    }
-
-    // Unified Structure Garrison & Deployment Dialog System (Works for Any Structure)
-    function openStructureGarrisonDialog(building) {
-      if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before deploying garrisoned units.");
-        return;
-      }
-
-      const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
-      const dialog = document.getElementById('game-modal');
-      const sourceCapacity = getStructureCapacity(building);
-      const sourceAvailable = garrisonedUnits.length;
-      const targetOccupancy = getTileOccupancy(state.targetTile.x, state.targetTile.y);
-      const targetCapacity = getTileCapacity(state.targetTile.x, state.targetTile.y);
-      const targetAvailable = Math.max(0, targetCapacity - targetOccupancy);
-      const maxCount = Math.min(sourceAvailable, targetAvailable);
-      
-      document.getElementById('modal-title').innerText = `${building.type.toUpperCase()} #${building.id} -> Target (${state.targetTile.x}, ${state.targetTile.y})`;
-      
-      if (sourceAvailable === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No units currently garrisoned in this ${building.type}.</p>`;
-        const actionsEl = document.getElementById('modal-actions');
-        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
-        dialog.showModal();
-        return;
-      }
-
-      if (maxCount <= 0) {
-        document.getElementById('modal-body').innerHTML = `
-          <div style="display:flex; flex-direction:column; gap:10px;">
-            <p>Source space: <strong style="color:#d9a441">${sourceAvailable} / ${sourceCapacity}</strong></p>
-            <p>Target space: <strong style="color:#d9a441">0 / ${targetCapacity}</strong></p>
-            <p style="color:#c1443a; font-size: 12px;">The target tile is already full.</p>
-          </div>
-        `;
-        const actionsEl = document.getElementById('modal-actions');
-        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
-        dialog.showModal();
-        return;
-      }
-
-      document.getElementById('modal-body').innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Source: <strong style="color:#d9a441">${sourceAvailable} / ${sourceCapacity}</strong></p>
-          <p>Target: <strong style="color:#d9a441">${targetAvailable} / ${targetCapacity}</strong></p>
-          <p style="font-size: 11px; color: #7a9d5c;">Target Destination: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
-          <label style="font-size: 12px; color: #9a9f8e;">Select number of units to deploy & send:</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <input type="range" id="deploy-range" min="1" max="${maxCount}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
-            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #d9a441; min-width: 24px; text-align: center;">1</span>
-          </div>
-          <div style="display: flex; gap: 6px; margin-top: 4px;">
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxCount}); document.getElementById('range-val').innerText=Math.min(5, ${maxCount});">5</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxCount}; document.getElementById('range-val').innerText=${maxCount};">Max (${maxCount})</button>
-          </div>
-        </div>
-      `;
-
-      const actionsEl = document.getElementById('modal-actions');
-      actionsEl.innerHTML = '';
-
-      const sendBtn = document.createElement('button');
-      sendBtn.innerText = 'Confirm Send';
-      sendBtn.onclick = () => {
-        const count = parseInt(document.getElementById('deploy-range').value, 10);
-        deployUnitsFromStructure(building, count, state.targetTile);
-        dialog.close();
-      };
-
-      const closeBtn = document.createElement('button');
-      closeBtn.innerText = 'Cancel';
-      closeBtn.onclick = () => dialog.close();
-
-      actionsEl.appendChild(sendBtn);
-      actionsEl.appendChild(closeBtn);
-
-      dialog.showModal();
-    }
-
-    function deployUnitsFromStructure(building, count, targetTile) {
-      const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
-      const targetBld = state.buildings.find(b => b.tileX === targetTile.x && b.tileY === targetTile.y);
-      const targetCapacity = targetBld ? getStructureCapacity(targetBld) : 10;
-      const targetOccupancy = targetBld
-        ? state.units.filter(u => u.garrisonedBuildingId === targetBld.id).length
-        : state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === targetTile.x && Math.floor(u.y) === targetTile.y).length;
-      const dispatchCount = Math.min(count, garrisonedUnits.length, Math.max(0, targetCapacity - targetOccupancy));
-
-      for (let i = 0; i < dispatchCount; i++) {
-        const unit = garrisonedUnits[i];
-        unit.garrisonedBuildingId = null;
-        unit.assignedMineId = null;
-        unit.x = building.tileX;
-        unit.y = building.tileY;
-        unit.targetX = targetTile.x;
-        unit.targetY = targetTile.y;
-
-        if (targetBld) {
-          unit.targetBuildingId = targetBld.id;
-          if (targetBld.type === 'mine' && unit.type === 'civilian') {
-            unit.targetMineId = targetBld.id;
-          }
-        } else {
-          unit.targetBuildingId = null;
-          unit.targetMineId = null;
-        }
-      }
-      updateUI();
-    }
-
-    // Standardized Target-Aware Dialog for Barracks
-    function openBarracksDialog(barracks) {
-      if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
-        return;
-      }
-
-      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
-      const dialog = document.getElementById('game-modal');
-      
-      document.getElementById('modal-title').innerText = `Barracks #${barracks.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
-      
-      if (availableCivs === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Soldiers (Cost: 50g + 1 Civilian each).</p>`;
-        const actionsEl = document.getElementById('modal-actions');
-        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
-        dialog.showModal();
-        return;
-      }
-
-      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / 50));
-      const maxTrain = Math.max(1, maxAffordable);
-
-      document.getElementById('modal-body').innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Available Civilians: <strong style="color:#d9a441">${availableCivs}</strong> | Cost: <strong>50g + 1 Civ each</strong></p>
-          <p style="font-size: 11px; color: #7a9d5c;">Rally Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
-          <label style="font-size: 12px; color: #9a9f8e;">Select number of Soldiers to train & rally:</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <input type="range" id="deploy-range" min="1" max="${maxTrain}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
-            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #d9a441; min-width: 24px; text-align: center;">1</span>
-          </div>
-          <div style="display: flex; gap: 6px; margin-top: 4px;">
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxTrain}); document.getElementById('range-val').innerText=Math.min(5, ${maxTrain});">5</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxTrain}; document.getElementById('range-val').innerText=${maxTrain};">Max (${maxTrain})</button>
-          </div>
-        </div>
-      `;
-
-      const actionsEl = document.getElementById('modal-actions');
-      actionsEl.innerHTML = '';
-
-      const sendBtn = document.createElement('button');
-      sendBtn.innerText = 'Train & Rally';
-      sendBtn.onclick = () => {
-        const count = parseInt(document.getElementById('deploy-range').value, 10);
-        trainUnit(barracks, 'soldier', count, state.targetTile);
-        dialog.close();
-      };
-
-      const closeBtn = document.createElement('button');
-      closeBtn.innerText = 'Cancel';
-      closeBtn.onclick = () => dialog.close();
-
-      actionsEl.appendChild(sendBtn);
-      actionsEl.appendChild(closeBtn);
-
-      dialog.showModal();
-    }
-
-    // Standardized Target-Aware Dialog for Armory
-    function openArmoryDialog(armory) {
-      if (!state.targetTile) {
-        showDialog("Select Target Tile First", "Please right-click a target destination tile on the grid before choosing training options.");
-        return;
-      }
-
-      const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
-      const dialog = document.getElementById('game-modal');
-      
-      document.getElementById('modal-title').innerText = `Armory #${armory.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
-      
-      if (availableCivs === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Tanks (Cost: 300g + 1 Civilian each).</p>`;
-        const actionsEl = document.getElementById('modal-actions');
-        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
-        dialog.showModal();
-        return;
-      }
-
-      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / 300));
-      const maxTrain = Math.max(1, maxAffordable);
-
-      document.getElementById('modal-body').innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Available Civilians: <strong style="color:#d9a441">${availableCivs}</strong> | Cost: <strong>300g + 1 Civ each</strong></p>
-          <p style="font-size: 11px; color: #7a9d5c;">Rally Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
-          <label style="font-size: 12px; color: #9a9f8e;">Select number of Tanks to train & rally:</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <input type="range" id="deploy-range" min="1" max="${maxTrain}" value="1" style="flex: 1; cursor: pointer;" oninput="document.getElementById('range-val').innerText = this.value">
-            <span id="range-val" style="font-family: monospace; font-size: 16px; color: #d9a441; min-width: 24px; text-align: center;">1</span>
-          </div>
-          <div style="display: flex; gap: 6px; margin-top: 4px;">
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=1; document.getElementById('range-val').innerText=1;">1</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=Math.min(5, ${maxTrain}); document.getElementById('range-val').innerText=Math.min(5, ${maxTrain});">5</button>
-            <button type="button" style="padding: 4px 8px; font-size: 11px;" onclick="document.getElementById('deploy-range').value=${maxTrain}; document.getElementById('range-val').innerText=${maxTrain};">Max (${maxTrain})</button>
-          </div>
-        </div>
-      `;
-
-      const actionsEl = document.getElementById('modal-actions');
-      actionsEl.innerHTML = '';
-
-      const sendBtn = document.createElement('button');
-      sendBtn.innerText = 'Train & Rally';
-      sendBtn.onclick = () => {
-        const count = parseInt(document.getElementById('deploy-range').value, 10);
-        trainUnit(armory, 'tank', count, state.targetTile);
-        dialog.close();
-      };
-
-      const closeBtn = document.createElement('button');
-      closeBtn.innerText = 'Cancel';
-      closeBtn.onclick = () => dialog.close();
-
-      actionsEl.appendChild(sendBtn);
-      actionsEl.appendChild(closeBtn);
-
-      dialog.showModal();
-    }
-
-    function setFireControl(tankUnit, mode) {
-      tankUnit.fireControl = mode;
-      updateUI();
-    }
-
-    function getSelectedEntity() {
-      if (!state.selectedEntityId) return null;
-      return state.units.find(u => u.id === state.selectedEntityId) ||
-             state.buildings.find(b => b.id === state.selectedEntityId);
-    }
-
-    // ==========================================
-    // 8. RENDER PIPELINE
-    // ==========================================
-    function render() {
-      ctx.fillStyle = '#0b0d0a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.save();
-      ctx.scale(state.camera.zoom, state.camera.zoom);
-
-      const startTileX = Math.floor(-state.camera.x / TILE_SIZE);
-      const startTileY = Math.floor(-state.camera.y / TILE_SIZE);
-      const endTileX = startTileX + Math.ceil(canvas.width / (TILE_SIZE * state.camera.zoom)) + 1;
-      const endTileY = startTileY + Math.ceil(canvas.height / (TILE_SIZE * state.camera.zoom)) + 1;
-
-      // Draw Grid Lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-      ctx.lineWidth = 1;
-
-      for (let x = startTileX; x < endTileX; x++) {
-        const sx = x * TILE_SIZE + state.camera.x;
-        ctx.beginPath();
-        ctx.moveTo(sx, 0);
-        ctx.lineTo(sx, canvas.height / state.camera.zoom);
-        ctx.stroke();
-      }
-      for (let y = startTileY; y < endTileY; y++) {
-        const sy = y * TILE_SIZE + state.camera.y;
-        ctx.beginPath();
-        ctx.moveTo(0, sy);
-        ctx.lineTo(canvas.width / state.camera.zoom, sy);
-        ctx.stroke();
-      }
-
-      // Draw Source-to-Target Selection Line & Target Marker
-      const selectedEntity = getSelectedEntity();
-      if (selectedEntity && state.targetTile) {
-        const sourceX = (selectedEntity.x !== undefined ? Math.floor(selectedEntity.x) : selectedEntity.tileX) * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
-        const sourceY = (selectedEntity.y !== undefined ? Math.floor(selectedEntity.y) : selectedEntity.tileY) * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
-        const targetX = state.targetTile.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
-        const targetY = state.targetTile.y * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
-
-        ctx.strokeStyle = '#d9a441';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 6]);
-        ctx.beginPath();
-        ctx.moveTo(sourceX, sourceY);
-        ctx.lineTo(targetX, targetY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Highlight Target Tile Circle Marker
-        ctx.strokeStyle = '#d9a441';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(targetX, targetY, 18, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Render Buildings
-      state.buildings.forEach(b => {
-        const px = b.tileX * TILE_SIZE + state.camera.x;
-        const py = b.tileY * TILE_SIZE + state.camera.y;
-
-        let img = null;
-        if (b.type === 'mine') img = IMAGES.mine;
-        if (b.type === 'residence') img = IMAGES.residence;
-        if (b.type === 'barracks') img = IMAGES.barracks;
-        if (b.type === 'armory') img = IMAGES.armory;
-        if (b.type === 'radar') img = IMAGES.radar;
-
-        if (img) {
-          const imgX = px + (TILE_SIZE - img.width) / 2;
-          const imgY = py + (TILE_SIZE - img.height) / 2;
-          ctx.drawImage(img, imgX, imgY);
-        } else {
-          ctx.fillStyle = b.type === 'mine' ? '#5b8ab5' : 
-                          b.type === 'residence' ? '#7a9d5c' : 
-                          b.type === 'barracks' ? '#c17a3f' : '#8f6f9e';
-          ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-        }
-
-        if (b.id === state.selectedEntityId) {
-          ctx.strokeStyle = '#d9a441';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-        }
-      });
-
-      // Render Active Unit Path Lines
-      state.units.forEach(u => {
-        if (u.garrisonedBuildingId) return;
-
-        if (u.x !== u.targetX || u.y !== u.targetY) {
-          const startX = u.x * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
-          const startY = u.y * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
-          const endX = u.targetX * TILE_SIZE + state.camera.x + TILE_SIZE / 2;
-          const endY = u.targetY * TILE_SIZE + state.camera.y + TILE_SIZE / 2;
-
-          ctx.strokeStyle = u.type === 'civilian' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(217, 164, 65, 0.3)';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(endX, endY);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      });
-
-      // Pass 1: Multi-unit tile stack count calculation
-      const tileUnitCounts = {};
-      state.units.forEach(u => {
-        if (u.garrisonedBuildingId) return;
-        const key = `${Math.floor(u.x)},${Math.floor(u.y)}`;
-        tileUnitCounts[key] = (tileUnitCounts[key] || 0) + 1;
-      });
-
-      // Pass 2: Draw multi-occupancy units cleanly spaced inside their tile boundary
-      const tileUnitIndices = {};
-      state.units.forEach(u => {
-        if (u.garrisonedBuildingId) return;
-
-        const tileKey = `${Math.floor(u.x)},${Math.floor(u.y)}`;
-        const totalOnTile = tileUnitCounts[tileKey];
-        const idxOnTile = tileUnitIndices[tileKey] || 0;
-        tileUnitIndices[tileKey] = idxOnTile + 1;
-
-        let subOffsetX = 0;
-        let subOffsetY = 0;
-        if (totalOnTile > 1) {
-          const angle = (idxOnTile / totalOnTile) * Math.PI * 2;
-          const radius = Math.min(14, 6 + totalOnTile * 2);
-          subOffsetX = Math.cos(angle) * radius;
-          subOffsetY = Math.sin(angle) * radius;
-        }
-
-        const px = u.x * TILE_SIZE + state.camera.x + subOffsetX;
-        const py = u.y * TILE_SIZE + state.camera.y + subOffsetY;
-
-        const assetKey = u.type === 'tank' ? 'tank' : (u.type === 'civilian' ? 'civilian' : 'soldier');
-        const img = IMAGES[assetKey];
-        if (img) {
-          const imgX = px + (TILE_SIZE - img.width) / 2;
-          const imgY = py + (TILE_SIZE - img.height) / 2;
-          ctx.drawImage(img, imgX, imgY);
-        } else {
-          ctx.fillStyle = u.type === 'tank' ? '#c1443a' : (u.type === 'civilian' ? '#c9a13c' : '#c17a3f');
-          ctx.beginPath();
-          ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, u.type === 'tank' ? 18 : 10, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (u.id === state.selectedEntityId) {
-          ctx.strokeStyle = '#d9a441';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 20, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(px + 8, py - 6, TILE_SIZE - 16, 4);
-        ctx.fillStyle = '#7a9d5c';
-        ctx.fillRect(px + 8, py - 6, (TILE_SIZE - 16) * (u.hp / u.maxHp), 4);
-      });
-
-      // Render Cannon Flare Effects
-      shotFlares.forEach((flare) => {
-        ctx.strokeStyle = `rgba(251, 146, 60, ${flare.life})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(flare.x1 * TILE_SIZE + state.camera.x, flare.y1 * TILE_SIZE + state.camera.y);
-        ctx.lineTo(flare.x2 * TILE_SIZE + state.camera.x, flare.y2 * TILE_SIZE + state.camera.y);
-        ctx.stroke();
-        flare.life -= 0.05;
-      });
-      shotFlares = shotFlares.filter(f => f.life > 0);
-
-      // Render Tile Hover Highlight
-      const hx = state.hoveredTile.x * TILE_SIZE + state.camera.x;
-      const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
-
       if (state.buildMode) {
-        const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
-        const cost = costs[state.buildMode] || 0;
-        const occupied = state.buildings.some(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
-        const affordable = state.resources >= cost;
-        const valid = !occupied && affordable;
-
-        const color = valid ? '122, 157, 92' : '193, 68, 58'; // ok green / danger red
-        ctx.fillStyle = `rgba(${color}, 0.18)`;
-        ctx.fillRect(hx, hy, TILE_SIZE, TILE_SIZE);
-        ctx.strokeStyle = `rgb(${color})`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+        placeBuilding(state.hoveredTile.x, state.hoveredTile.y);
       } else {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+        state.targetTile = { x: state.hoveredTile.x, y: state.hoveredTile.y };
       }
-
-      ctx.restore();
-    }
-
-    let lastTime = performance.now();
-    function gameLoop(now) {
-      const deltaTime = now - lastTime;
-      lastTime = now;
-
-      applyKeyboardPan(deltaTime);
-      updateCombatAndMovement(deltaTime);
-      render();
-
-      if (document.visibilityState === 'visible') {
-        syncPersistenceTimestamp();
-        saveGameState();
-      }
-
-      requestAnimationFrame(gameLoop);
-    }
-
+    });
 
     // ==========================================
-    // 9. UI UPDATER (WEB PAGE HUD & INSPECTOR PANEL)
+    // 9. GAME LOGIC
+    // ==========================================
+    function updateCombatAndMovement(deltaTime) {
+      state.units.forEach(unit => {
+        if (unit.garrisonedBuildingId) return;  // Skip garrisoned units
+
+        const dist = Math.hypot(unit.targetX - unit.x, unit.targetY - unit.y);
+        if (dist > 0.1) {
+          const vx = (unit.targetX - unit.x) / dist;
+          const vy = (unit.targetY - unit.y) / dist;
+          unit.x += vx * unit.speed * (deltaTime / 16);
+          unit.y += vy * unit.speed * (deltaTime / 16);
+        }
+      });
+
+      // Auto-assign idle civilians to nearest residence
+      state.units.filter(u => u.type === 'civilian' && !u.garrisonedBuildingId).forEach(civ => {
+        const nearest = Array.from(residences.values()).find(r => !r.isFull());
+        if (nearest) {
+          garrisonCivilianInResidence(civ, nearest.buildingId);
+        }
+      });
+
+      // Auto-generate resources from garrisoned civilians in residences
+      residences.forEach((residence) => {
+        state.resources += residence.occupants.length * 0.5;
+      });
+    }
+
+    function applyKeyboardPan(deltaTime) {
+      const panSpeed = 300;
+      if (keys['ArrowUp'] || keys['w'] || keys['W']) state.camera.y += panSpeed * (deltaTime / 1000);
+      if (keys['ArrowDown'] || keys['s'] || keys['S']) state.camera.y -= panSpeed * (deltaTime / 1000);
+      if (keys['ArrowLeft'] || keys['a'] || keys['A']) state.camera.x += panSpeed * (deltaTime / 1000);
+      if (keys['ArrowRight'] || keys['d'] || keys['D']) state.camera.x -= panSpeed * (deltaTime / 1000);
+    }
+
+    // ==========================================
+    // 10. UI UPDATER
     // ==========================================
     function updateUI() {
       document.getElementById('ui-resources').innerText = Math.floor(state.resources);
+
       const totalCivs = state.units.filter(u => u.type === 'civilian').length;
-      document.getElementById('ui-civilians').innerText = `${totalCivs} / ${state.civilianCap}`;
-      
-      let totalMiners = state.units.filter(u => {
+      const maxCivCapacity = residences.size * 10;
+      document.getElementById('ui-civilians').innerText = `${totalCivs} / ${maxCivCapacity}`;
+
+      const totalMiners = state.units.filter(u => {
         if (u.type !== 'civilian') return false;
-        if (u.assignedMineId) return true;  // explicitly assigned to a mine
-        // Check if garrisoned in a mine building
+        if (u.assignedMineId) return true;
         if (u.garrisonedBuildingId) {
           const building = state.buildings.find(b => b.id === u.garrisonedBuildingId);
           return building && building.type === 'mine';
@@ -1722,129 +873,234 @@
       actionsEl.innerHTML = '';
 
       if (!entity) {
-        // Hover Preview Info Card inside the Web Interface
         const hoveredBld = state.buildings.find(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
         if (hoveredBld) {
           const info = BUILDING_INFO[hoveredBld.type] || { title: hoveredBld.type, desc: '', stats: '' };
-          const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === hoveredBld.id);
-          const maxCap = hoveredBld.capacity || hoveredBld.capBonus || 10;
+          let occupancyStr = '';
 
-          let unitBreakdown = "";
-          if (garrisonedUnits.length === 0) {
-            unitBreakdown = "<span style='color: #5f6459;'>None</span>";
+          if (hoveredBld.type === 'residence') {
+            const res = residences.get(hoveredBld.id);
+            occupancyStr = res ? res.getOccupancyString() : '0/10';
           } else {
-            const counts = {};
-            garrisonedUnits.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
-            unitBreakdown = Object.entries(counts)
-              .map(([type, count]) => `<span style="color:#d9a441;">${count} ${type.charAt(0).toUpperCase() + type.slice(1)}${count > 1 ? 's' : ''}</span>`)
-              .join(', ');
+            const garrisoned = state.units.filter(u => u.garrisonedBuildingId === hoveredBld.id);
+            occupancyStr = `${garrisoned.length}/${hoveredBld.capacity}`;
           }
 
-          titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;
+          titleEl.innerText = `${info.title} #${hoveredBld.id}`;
           detailsEl.innerHTML = `
-            <div style="margin-bottom: 4px;">
-              <strong style="color: #e8e4d8;">${info.title} Info Card</strong>
-              <div style="color: #5f6459; font-size: 11px;">${info.stats}</div>
-            </div>
-            <div style="margin-bottom: 6px; font-size: 11px; color: #9a9f8e;">${info.desc}</div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
-              <div><strong>HP:</strong> ${hoveredBld.hp}/${hoveredBld.maxHp} | <strong>Tile:</strong> (${hoveredBld.tileX}, ${hoveredBld.tileY})</div>
-              <div style="margin-top: 2px;"><strong>Units Inside (${garrisonedUnits.length}/${maxCap}):</strong> ${unitBreakdown}</div>
-            </div>
+            <strong>${info.title}</strong><br/>
+            ${info.stats}<br/>
+            Occupancy: <span style="color:#d9a441;">${occupancyStr}</span><br/>
+            Tile: (${hoveredBld.tileX}, ${hoveredBld.tileY})
           `;
           deselectBtn.style.display = 'none';
           return;
         }
 
         titleEl.innerText = 'Selection: None';
-        detailsEl.innerText = 'Left-click to select a unit or structure. Right-click a tile to move/target it. Drag (or WASD/arrows) to pan, scroll to zoom, Esc to cancel/deselect.';
+        detailsEl.innerText = 'Left-click to select a unit or structure. Right-click a tile to build/move.';
         deselectBtn.style.display = 'none';
         return;
       }
 
       deselectBtn.style.display = 'block';
-      const targetText = state.targetTile ? ` | Target: (${state.targetTile.x}, ${state.targetTile.y})` : ' | Target: None (Right-click grid)';
 
       if (entity.entityType === 'unit') {
         const uTileX = Math.floor(entity.x);
         const uTileY = Math.floor(entity.y);
-        const unitsOnSameTile = state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === uTileX && Math.floor(u.y) === uTileY);
-        const uIdx = unitsOnSameTile.findIndex(u => u.id === entity.id) + 1;
-        
-        const stackText = unitsOnSameTile.length > 1 ? ` (${uIdx} of ${unitsOnSameTile.length} on Tile)` : '';
+        titleEl.innerText = `${entity.type.toUpperCase()} ID: ${entity.id}`;
 
-        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})${stackText}`;
-        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${uTileX}, ${uTileY})${targetText}`;
-
-        if (entity.type === 'civilian') {
-          const status = entity.assignedMineId ? `Mining Mine #${entity.assignedMineId}` : 'Idle / Moving';
-          detailsEl.innerText += ` | Status: ${status}`;
-        } else if (entity.type === 'tank') {
-          detailsEl.innerText += ` | Cannon DPS: 0.5`;
-          
-          const modes = ['aggressive', 'ignore_infantry', 'ignore_buildings', 'prioritize_buildings', 'hold_fire'];
-          modes.forEach(mode => {
-            const btn = document.createElement('button');
-            btn.className = `fc-btn ${entity.fireControl === mode ? 'active-mode' : ''}`;
-            btn.innerText = mode.replace('_', ' ');
-            btn.onclick = () => setFireControl(entity, mode);
-            actionsEl.appendChild(btn);
-          });
+        let status = 'Idle';
+        if (entity.garrisonedBuildingId) {
+          status = `Garrisoned in Building #${entity.garrisonedBuildingId}`;
+        } else if (entity.assignedMineId) {
+          status = `Mining #${entity.assignedMineId}`;
         }
+
+        detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${uTileX}, ${uTileY}) | Status: ${status}`;
       } else if (entity.entityType === 'building') {
         const info = BUILDING_INFO[entity.type] || { title: entity.type, desc: '', stats: '' };
-        const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === entity.id);
-        const maxCap = entity.capacity || entity.capBonus || 10;
 
-        let unitBreakdown = "";
-        if (garrisonedUnits.length === 0) {
-          unitBreakdown = "<span style='color: #5f6459;'>None</span>";
+        titleEl.innerText = `${info.title.toUpperCase()} ID: ${entity.id}`;
+
+        let occupancyStr = '';
+        let garrisonedUnits = [];
+
+        if (entity.type === 'residence') {
+          const res = residences.get(entity.id);
+          if (res) {
+            occupancyStr = res.getOccupancyString();
+            garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === entity.id);
+          }
         } else {
-          const counts = {};
-          garrisonedUnits.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
-          unitBreakdown = Object.entries(counts)
-            .map(([type, count]) => `<span style="color:#d9a441;">${count} ${type.charAt(0).toUpperCase() + type.slice(1)}${count > 1 ? 's' : ''}</span>`)
-            .join(', ');
+          garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === entity.id);
+          occupancyStr = `${garrisonedUnits.length}/${entity.capacity}`;
         }
 
-        titleEl.innerText = `${info.title.toUpperCase()} (ID: ${entity.id})`;
-
         detailsEl.innerHTML = `
-          <div style="margin-bottom: 4px;">
-            <strong style="color: #e8e4d8;">${info.title} Info Card</strong>
-            <div style="color: #5f6459; font-size: 11px;">${info.stats}</div>
-          </div>
-          <div style="margin-bottom: 6px; font-size: 11px; color: #9a9f8e;">${info.desc}</div>
-          <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
-            <div><strong>HP:</strong> ${entity.hp}/${entity.maxHp} | <strong>Tile:</strong> (${entity.tileX}, ${entity.tileY})${targetText}</div>
-            <div style="margin-top: 2px;"><strong>Units Inside (${garrisonedUnits.length}/${maxCap}):</strong> ${unitBreakdown}</div>
-          </div>
+          <strong>${info.title}</strong><br/>
+          HP: ${entity.hp}/${entity.maxHp} | Tile: (${entity.tileX}, ${entity.tileY})<br/>
+          Occupancy: <span style="color:#d9a441;">${occupancyStr}</span>
         `;
 
-        // Deploy button available for ANY structure holding garrisoned units
         if (garrisonedUnits.length > 0) {
           const deployBtn = document.createElement('button');
-          deployBtn.innerHTML = `<img src="${ASSETS.civilian}" /> Deploy Garrisoned Units`;
-          deployBtn.onclick = () => openStructureGarrisonDialog(entity);
+          deployBtn.textContent = `Deploy ${garrisonedUnits.length} Unit(s)`;
+          deployBtn.onclick = () => {
+            deployFromResidence(entity.id);
+            deselect();
+          };
           actionsEl.appendChild(deployBtn);
         }
 
         if (entity.type === 'barracks') {
           const trainBtn = document.createElement('button');
-          trainBtn.innerHTML = `<img src="${ASSETS.soldier}" /> Train / Rally Options`;
+          trainBtn.textContent = 'Train Soldier (50)';
           trainBtn.onclick = () => openBarracksDialog(entity);
           actionsEl.appendChild(trainBtn);
-
         } else if (entity.type === 'armory') {
           const trainBtn = document.createElement('button');
-          trainBtn.innerHTML = `<img src="${ASSETS.tank}" /> Train / Rally Options`;
+          trainBtn.textContent = 'Train Tank (150)';
           trainBtn.onclick = () => openArmoryDialog(entity);
           actionsEl.appendChild(trainBtn);
         }
       }
     }
 
-    initGame();
+    // ==========================================
+    // 11. RENDERING
+    // ==========================================
+    function render() {
+      ctx.fillStyle = 'rgb(11, 13, 10)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(state.camera.x, state.camera.y);
+
+      // Render grid
+      ctx.strokeStyle = 'rgba(217, 164, 65, 0.1)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= GRID_WIDTH; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * TILE_SIZE, 0);
+        ctx.lineTo(x * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= GRID_HEIGHT; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * TILE_SIZE);
+        ctx.lineTo(GRID_WIDTH * TILE_SIZE, y * TILE_SIZE);
+        ctx.stroke();
+      }
+
+      // Render buildings
+      state.buildings.forEach(b => {
+        const px = b.tileX * TILE_SIZE;
+        const py = b.tileY * TILE_SIZE;
+
+        const colorMap = {
+          residence: 'rgba(122, 157, 92, 0.6)',
+          barracks: 'rgba(251, 146, 60, 0.6)',
+          armory: 'rgba(193, 68, 58, 0.6)',
+          radar: 'rgba(100, 150, 200, 0.6)',
+          mine: 'rgba(180, 140, 60, 0.6)'
+        };
+
+        ctx.fillStyle = colorMap[b.type] || 'rgba(217, 164, 65, 0.5)';
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        const selected = state.selectedEntityId === b.id && state.selectedEntityType === 'building';
+        ctx.strokeStyle = selected ? '#d9a441' : 'rgba(217, 164, 65, 0.4)';
+        ctx.lineWidth = selected ? 3 : 1;
+        ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        // Render capacity indicator for residences
+        if (b.type === 'residence') {
+          const res = residences.get(b.id);
+          if (res) {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.font = 'bold 12px monospace';
+            ctx.fillText(res.getOccupancyString(), px + 8, py + TILE_SIZE - 6);
+          }
+        }
+      });
+
+      // Render units
+      state.units.forEach(u => {
+        if (u.garrisonedBuildingId) return;
+
+        const px = u.x * TILE_SIZE;
+        const py = u.y * TILE_SIZE;
+
+        const colorMap = {
+          civilian: 'rgba(217, 164, 65, 0.8)',
+          soldier: 'rgba(122, 157, 92, 0.8)',
+          tank: 'rgba(251, 146, 60, 0.8)'
+        };
+
+        ctx.fillStyle = colorMap[u.type] || 'rgba(217, 164, 65, 0.5)';
+        ctx.fillRect(px + 8, py + 8, TILE_SIZE - 16, TILE_SIZE - 16);
+
+        const selected = state.selectedEntityId === u.id && state.selectedEntityType === 'unit';
+        ctx.strokeStyle = selected ? '#f2c368' : 'rgba(217, 164, 65, 0.3)';
+        ctx.lineWidth = selected ? 3 : 1;
+        ctx.strokeRect(px + 8, py + 8, TILE_SIZE - 16, TILE_SIZE - 16);
+
+        // HP bar
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(px + 8, py - 6, TILE_SIZE - 16, 4);
+        ctx.fillStyle = '#7a9d5c';
+        ctx.fillRect(px + 8, py - 6, (TILE_SIZE - 16) * (u.hp / u.maxHp), 4);
+      });
+
+      // Tile hover highlight
+      const hx = state.hoveredTile.x * TILE_SIZE;
+      const hy = state.hoveredTile.y * TILE_SIZE;
+
+      if (state.buildMode) {
+        const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
+        const cost = costs[state.buildMode] || 0;
+        const occupied = state.buildings.some(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
+        const affordable = state.resources >= cost;
+        const valid = !occupied && affordable;
+
+        const color = valid ? '122, 157, 92' : '193, 68, 58';
+        ctx.fillStyle = `rgba(${color}, 0.18)`;
+        ctx.fillRect(hx, hy, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = `rgb(${color})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+      } else {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(hx, hy, TILE_SIZE, TILE_SIZE);
+      }
+
+      ctx.restore();
+    }
+
+    // ==========================================
+    // 12. GAME LOOP
+    // ==========================================
+    let lastTime = performance.now();
+    function gameLoop(now) {
+      const deltaTime = now - lastTime;
+      lastTime = now;
+
+      applyKeyboardPan(deltaTime);
+      updateCombatAndMovement(deltaTime);
+      render();
+      updateUI();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Initialize game
+    createBuilding('residence', 5, 5);
+    createBuilding('residence', 5, 8);
+    createBuilding('barracks', 10, 10);
+
+    updateUI();
     requestAnimationFrame(gameLoop);
   </script>
 </body>

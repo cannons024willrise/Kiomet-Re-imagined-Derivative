@@ -328,10 +328,10 @@
       <div class="hud-panel">
         <div class="panel-title">Build / Spawn</div>
         <div class="btn-group">
-          <button onclick="startBuild('residence')">Build Residence (100)</button>
-          <button onclick="startBuild('barracks')">Build Barracks (200)</button>
-          <button onclick="startBuild('armory')">Build Armory (500)</button>
-          <button onclick="startBuild('radar')">Build Radar (250)</button>
+          <button onclick="startBuild('residence')">Residence (40)</button>
+          <button onclick="startBuild('barracks')">Barracks (60)</button>
+          <button onclick="startBuild('armory')">Armory (120)</button>
+          <button onclick="startBuild('radar')">Radar (75)</button>
         </div>
         <div class="btn-group" style="margin-top: 8px;">
           <button onclick="spawnCivilians()">Spawn Civilians</button>
@@ -346,7 +346,7 @@
     <span class="close-dialog" onclick="document.getElementById('barracks-dialog').close();">×</span>
     <div class="dialog-title">Barracks Options</div>
     <div class="dialog-section">
-      <button onclick="trainSoldier()">Train Soldier (50 res)</button>
+      <button onclick="trainSoldier()">Train Soldier (15 res)</button>
       <div style="font-size: 11px; color: #9a9f8e; margin-top: 6px;">Soldiers are effective against infantry units and light armor.</div>
     </div>
   </dialog>
@@ -355,7 +355,7 @@
     <span class="close-dialog" onclick="document.getElementById('armory-dialog').close();">×</span>
     <div class="dialog-title">Armory Options</div>
     <div class="dialog-section">
-      <button onclick="trainTank()">Train Tank (150 res)</button>
+      <button onclick="trainTank()">Train Tank (40 res)</button>
       <div style="font-size: 11px; color: #9a9f8e; margin-top: 6px;">Tanks are heavily armored and deal splash damage with their cannons.</div>
     </div>
   </dialog>
@@ -377,28 +377,28 @@
     const BUILDING_INFO = {
       residence: {
         title: 'Residence',
-        desc: 'Provides housing for up to 10 civilians. Essential for population growth.',
-        stats: 'Capacity: 10 | HP: 100'
+        desc: 'Provides housing for up to 10 civilians. Auto-spawns civilians when at capacity.',
+        stats: 'Cost: 40 | Capacity: 10 | HP: 150'
       },
       barracks: {
         title: 'Barracks',
-        desc: 'Trains soldiers and can garrison up to 20 military units.',
-        stats: 'Capacity: 20 | HP: 150'
+        desc: 'Trains soldiers and can garrison up to 40 military units.',
+        stats: 'Cost: 60 | Capacity: 40 | HP: 150'
       },
       armory: {
         title: 'Armory',
-        desc: 'Trains tanks and can garrison up to 10 heavy units.',
-        stats: 'Capacity: 10 | HP: 200'
+        desc: 'Trains tanks and can garrison up to 25 heavy units.',
+        stats: 'Cost: 120 | Capacity: 25 | HP: 150'
       },
       radar: {
         title: 'Radar Station',
         desc: 'Defensive structure that detects threats. Can garrison up to 15 units.',
-        stats: 'Capacity: 15 | HP: 120'
+        stats: 'Cost: 75 | Capacity: 15 | HP: 150'
       },
       mine: {
         title: 'Mine',
         desc: 'Resource extraction point. Automatically produces resources when garrisoned with civilians.',
-        stats: 'Capacity: 10 | HP: 80'
+        stats: 'Cost: 25 | Capacity: 10 | HP: 150'
       }
     };
 
@@ -415,7 +415,7 @@
     // 1. GAME STATE
     // ==========================================
     const state = {
-      resources: 500,
+      resources: 800,
       camera: { x: 0, y: 0 },
       hoveredTile: { x: 0, y: 0 },
       selectedEntityId: null,
@@ -484,11 +484,11 @@
 
     function createBuilding(type, tileX, tileY) {
       const costs = {
-        residence: 100,
-        barracks: 200,
-        armory: 500,
-        radar: 250,
-        mine: 75
+        residence: 40,
+        barracks: 60,
+        armory: 120,
+        radar: 75,
+        mine: 25
       };
 
       const cost = costs[type] || 0;
@@ -499,9 +499,9 @@
         type: type,
         tileX: tileX,
         tileY: tileY,
-        hp: 100,
-        maxHp: 100,
-        capacity: type === 'barracks' ? 20 : type === 'armory' ? 10 : 15,
+        hp: 150,
+        maxHp: 150,
+        capacity: type === 'barracks' ? 40 : type === 'armory' ? 25 : 15,
         capBonus: type === 'residence' ? 10 : 0
       };
 
@@ -569,15 +569,15 @@
     // 4. UNIT SYSTEM
     // ==========================================
     function createUnit(type, x, y) {
-      const costs = { civilian: 10, soldier: 50, tank: 150 };
+      const costs = { civilian: 5, soldier: 15, tank: 40 };
       const cost = costs[type] || 0;
 
       if (state.resources < cost) return null;
 
       const unitStats = {
-        civilian: { maxHp: 10, speed: 1.2 },
-        soldier: { maxHp: 20, speed: 1.5 },
-        tank: { maxHp: 60, speed: 1.0 }
+        civilian: { maxHp: 15, speed: 2.5 },
+        soldier: { maxHp: 30, speed: 3.0 },
+        tank: { maxHp: 80, speed: 2.0 }
       };
 
       const stats = unitStats[type] || { maxHp: 10, speed: 1.0 };
@@ -604,7 +604,7 @@
     }
 
     function spawnCivilians() {
-      const count = Math.min(10, Math.floor(state.resources / 10));
+      const count = Math.min(20, Math.floor(state.resources / 5));
       if (count === 0) return;
 
       for (let i = 0; i < count; i++) {
@@ -617,9 +617,9 @@
     }
 
     function spawnSoldiers() {
-      if (state.resources < 50) return;
-      for (let i = 0; i < 5; i++) {
-        if (state.resources < 50) break;
+      const count = Math.min(10, Math.floor(state.resources / 15));
+      if (count === 0) return;
+      for (let i = 0; i < count; i++) {
         const x = Math.random() * GRID_WIDTH;
         const y = Math.random() * GRID_HEIGHT;
         createUnit('soldier', x, y);
@@ -628,10 +628,13 @@
     }
 
     function spawnTanks() {
-      if (state.resources < 150) return;
-      const x = Math.random() * GRID_WIDTH;
-      const y = Math.random() * GRID_HEIGHT;
-      createUnit('tank', x, y);
+      const count = Math.min(5, Math.floor(state.resources / 40));
+      if (count === 0) return;
+      for (let i = 0; i < count; i++) {
+        const x = Math.random() * GRID_WIDTH;
+        const y = Math.random() * GRID_HEIGHT;
+        createUnit('tank', x, y);
+      }
       updateUI();
     }
 
@@ -711,12 +714,11 @@
 
     function trainSoldier() {
       const building = window.currentBuilding;
-      if (!building || state.resources < 50) return;
+      if (!building || state.resources < 15) return;
 
       const soldier = createUnit('soldier', building.tileX, building.tileY);
       if (soldier) {
         soldier.garrisonedBuildingId = building.id;
-        console.log('Soldier trained and garrisoned');
       }
 
       updateUI();
@@ -724,12 +726,11 @@
 
     function trainTank() {
       const building = window.currentBuilding;
-      if (!building || state.resources < 150) return;
+      if (!building || state.resources < 40) return;
 
       const tank = createUnit('tank', building.tileX, building.tileY);
       if (tank) {
         tank.garrisonedBuildingId = building.id;
-        console.log('Tank trained and garrisoned');
       }
 
       updateUI();
@@ -827,12 +828,23 @@
 
       // Auto-generate resources from garrisoned civilians in residences
       residences.forEach((residence) => {
-        state.resources += residence.occupants.length * 0.5;
+        state.resources += residence.occupants.length * 1.2;
+      });
+
+      // AUTO-SPAWN CIVILIANS when residence has capacity
+      residences.forEach((residence) => {
+        if (!residence.isFull() && state.resources >= 5) {
+          // Auto-spawn one civilian per frame if space available
+          const civil = createUnit('civilian', residence.tileX + 0.5, residence.tileY + 0.5);
+          if (civil) {
+            garrisonCivilianInResidence(civil, residence.buildingId);
+          }
+        }
       });
     }
 
     function applyKeyboardPan(deltaTime) {
-      const panSpeed = 300;
+      const panSpeed = 400;
       if (keys['ArrowUp'] || keys['w'] || keys['W']) state.camera.y += panSpeed * (deltaTime / 1000);
       if (keys['ArrowDown'] || keys['s'] || keys['S']) state.camera.y -= panSpeed * (deltaTime / 1000);
       if (keys['ArrowLeft'] || keys['a'] || keys['A']) state.camera.x += panSpeed * (deltaTime / 1000);
@@ -955,12 +967,12 @@
 
         if (entity.type === 'barracks') {
           const trainBtn = document.createElement('button');
-          trainBtn.textContent = 'Train Soldier (50)';
+          trainBtn.textContent = 'Train Soldier (15)';
           trainBtn.onclick = () => openBarracksDialog(entity);
           actionsEl.appendChild(trainBtn);
         } else if (entity.type === 'armory') {
           const trainBtn = document.createElement('button');
-          trainBtn.textContent = 'Train Tank (150)';
+          trainBtn.textContent = 'Train Tank (40)';
           trainBtn.onclick = () => openArmoryDialog(entity);
           actionsEl.appendChild(trainBtn);
         }
@@ -1095,9 +1107,9 @@
       requestAnimationFrame(gameLoop);
     }
 
-    // Initialize game
+    // Initialize game with balanced starting buildings
     createBuilding('residence', 5, 5);
-    createBuilding('residence', 5, 8);
+    createBuilding('residence', 8, 5);
     createBuilding('barracks', 10, 10);
 
     updateUI();

@@ -357,7 +357,7 @@
 
       <!-- Quick Build Toolbar -->
       <div id="build-menu" class="hud-panel">
-        <button onclick="setBuildMode('residence')"><img class="btn-icon-residence" /> Residence <span class="shortcut-tag">(100g)</span></button>
+        <button onclick="setBuildMode('residence')"><img class="btn-icon-residence" /> Residence <span class="shortcut-tag">(50g)</span></button>
         <button onclick="setBuildMode('barracks')"><img class="btn-icon-barracks" /> Barracks <span class="shortcut-tag">(200g)</span></button>
         <button onclick="setBuildMode('armory')"><img class="btn-icon-armory" /> Armory <span class="shortcut-tag">(500g)</span></button>
         <button onclick="setBuildMode('radar')"><img class="btn-icon-radar" /> Radar <span class="shortcut-tag">(250g)</span></button>
@@ -397,7 +397,7 @@
       residence: {
         title: "Residence",
         desc: "Increases civilian population capacity (+10 cap bonus) and passively spawns new civilians.",
-        stats: "Cost: 100g | Housing Cap: +10 Civilians | Garrison: 10 Units"
+        stats: "Cost: 50g | Housing Cap: +10 Civilians | Garrison: 10 Units | Growth: 1 civ / 5 sec"
       },
       barracks: {
         title: "Barracks",
@@ -631,7 +631,7 @@
           b.assignedCivilians = activeMiners;
           
           // Add mining progress for this mine
-          const mineResourceRate = activeMiners * (1 / 60);
+          const mineResourceRate = activeMiners * (2 / 60);
           b.miningProgress += mineResourceRate;
           
           // When progress >= 1, harvest a resource and update global resources
@@ -802,11 +802,11 @@
         trainingQueue: [],
         capacity: 10, // Max capacity for garrisoning units in any structure
         miningProgress: 0, // For mines: tracks fractional resource generation (0-1)
-        growthProgress: 0  // For residences: tracks civilian growth progress (0-5)
+        growthProgress: 0  // For residences: tracks civilian growth progress (0-2.5)
       };
 
       if (type === 'residence') { 
-        base.cost = 100; 
+        base.cost = 50; 
         base.capBonus = 10; 
         base.capacity = 10;
       }
@@ -1183,7 +1183,7 @@
     }
 
     function placeBuilding(type, tileX, tileY) {
-      const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
+      const costs = { residence: 50, barracks: 200, armory: 500, radar: 250 };
       const cost = costs[type];
 
       if (state.resources < cost) {
@@ -1588,7 +1588,7 @@
           
           // Brighter cyan for actual progress
           ctx.fillStyle = 'rgb(34, 211, 238)';
-          const progressWidth = TILE_SIZE * Math.min(b.growthProgress / 5, 1); // 0-5 normalized to 0-1
+          const progressWidth = TILE_SIZE * Math.min(b.growthProgress / 5, 1); // 0-2.5 normalized to 0-1
           ctx.fillRect(px, py + TILE_SIZE - barHeight, progressWidth, barHeight);
         }
 
@@ -1712,7 +1712,7 @@
       const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
 
       if (state.buildMode) {
-        const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
+        const costs = { residence: 50, barracks: 200, armory: 500, radar: 250 };
         const cost = costs[state.buildMode] || 0;
         const occupied = state.buildings.some(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
         const affordable = state.resources >= cost;
@@ -1806,7 +1806,7 @@
           let residenceNote = '';
           if (hoveredBld.type === 'residence') {
             const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === hoveredBld.id).length;
-            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows if not full | Replenishes if losses occur</div>`;
+            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows every 5s if not full | Replenishes if losses occur</div>`;
           }
 
           titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;
@@ -1892,7 +1892,7 @@
         let residenceNote = '';
         if (entity.type === 'residence') {
           const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === entity.id).length;
-          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows if not full | Replenishes if losses occur</div>`;
+          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows every 5s if not full | Replenishes if losses occur</div>`;
         }
 
         detailsEl.innerHTML = `

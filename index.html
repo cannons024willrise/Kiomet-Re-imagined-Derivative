@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grid RTS Engine - Kiomet Inspired</title>
+  <title>Grid RTS Engine - Kiomet & Travian Inspired</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
@@ -396,8 +396,8 @@
     const BUILDING_INFO = {
       residence: {
         title: "Residence",
-        desc: "Each residence strictly houses up to 10 civilians and passively spawns new civilians.",
-        stats: "Cost: 100g | Housing Cap: 10 Civilians | Garrison: 10 Units"
+        desc: "Increases civilian population capacity (+10 cap bonus) and passively spawns new civilians.",
+        stats: "Cost: 100g | Housing Cap: +10 Civilians | Garrison: 10 Units"
       },
       barracks: {
         title: "Barracks",
@@ -514,12 +514,14 @@
     const SAVE_KEY = 'grid-rts-engine-save-v1';
     const CATCH_UP_CAP_MS = 1000 * 60 * 60 * 12; // Keep recovery work sane if the tab was gone for ages.
     let idCounter = 1;
+    let civilianNumberCounter = 0; // Proper civilian numbering system
 
     const state = {
       resources: 0,
       civilians: 15,
       civilianCap: 0, // Capped strictly based on total Residence housing capacity
       civilianGrowthCounter: 0,
+      civilianNumberCounter: 0, // Track next civilian number
       lastSavedAt: Date.now(),
 
       // Entities
@@ -545,88 +547,13 @@
       },
 
       // Faction
-      playerFaction: 'blue',
-
-      // Civilian status snapshot for residence UI / persistence
-      civilianStatusList: []
+      playerFaction: 'blue'
     };
 
     function refreshDerivedState() {
-      const residences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue');
-      state.civilianCap = residences.reduce((sum, residence) => sum + (residence.capacity || residence.capBonus || 10), 0);
+      const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
+      state.civilianCap = numResidences * 10;
       state.civilians = state.units.filter(u => u.type === 'civilian').length;
-    }
-
-    function getCivilianStatusLabel(civilian) {
-      if (civilian.assignedMineId) return `Mining Mine #${civilian.assignedMineId}`;
-      if (civilian.garrisonedBuildingId) return `Housed in Residence #${civilian.garrisonedBuildingId}`;
-      return 'Idle / Moving';
-    }
-
-    function buildResidenceCivilianStatusList() {
-      return state.buildings
-        .filter(b => b.type === 'residence' && b.faction === 'blue')
-        .sort((a, b) => a.id - b.id)
-        .map(residence => {
-          const capacity = residence.capacity || residence.capBonus || 10;
-          const civilians = state.units
-            .filter(u => u.type === 'civilian' && u.garrisonedBuildingId === residence.id)
-            .sort((a, b) => a.id - b.id)
-            .map(civilian => ({
-              id: civilian.id,
-              hp: civilian.hp,
-              maxHp: civilian.maxHp,
-              status: getCivilianStatusLabel(civilian),
-              assignedMineId: civilian.assignedMineId || null,
-              garrisonedBuildingId: civilian.garrisonedBuildingId || null
-            }));
-
-          return {
-            residenceId: residence.id,
-            capacity,
-            occupied: civilians.length,
-            civilians
-          };
-        });
-    }
-
-    function enforceResidenceCaps() {
-      const residences = state.buildings
-        .filter(b => b.type === 'residence' && b.faction === 'blue')
-        .sort((a, b) => a.id - b.id);
-
-      for (const residence of residences) {
-        const capacity = residence.capacity || residence.capBonus || 10;
-        const housed = state.units
-          .filter(u => u.type === 'civilian' && u.garrisonedBuildingId === residence.id)
-          .sort((a, b) => a.id - b.id);
-
-        if (housed.length <= capacity) continue;
-
-        const overflow = housed.slice(capacity);
-        for (const civilian of overflow) {
-          const fallbackResidence = residences.find(r => {
-            if (r.id === residence.id) return false;
-            const currentCount = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === r.id).length;
-            const targetCapacity = r.capacity || r.capBonus || 10;
-            return currentCount < targetCapacity;
-          });
-
-          if (fallbackResidence) {
-            civilian.garrisonedBuildingId = fallbackResidence.id;
-            civilian.x = fallbackResidence.tileX;
-            civilian.y = fallbackResidence.tileY;
-            civilian.targetX = fallbackResidence.tileX;
-            civilian.targetY = fallbackResidence.tileY;
-            civilian.targetBuildingId = fallbackResidence.id;
-          } else {
-            civilian.garrisonedBuildingId = null;
-            civilian.assignedMineId = null;
-            civilian.targetBuildingId = null;
-            civilian.targetMineId = null;
-          }
-        }
-      }
     }
 
     function syncPersistenceTimestamp() {
@@ -640,6 +567,7 @@
           civilians: state.civilians,
           civilianCap: state.civilianCap,
           civilianGrowthCounter: state.civilianGrowthCounter,
+          civilianNumberCounter: civilianNumberCounter,
           units: state.units,
           buildings: state.buildings,
           selectedEntityId: state.selectedEntityId,
@@ -648,7 +576,6 @@
           buildMode: state.buildMode,
           camera: state.camera,
           playerFaction: state.playerFaction,
-          civilianStatusList: buildResidenceCivilianStatusList(),
           lastSavedAt: state.lastSavedAt,
           idCounter
         };
@@ -678,7 +605,6 @@
         state.buildMode = null;
         state.camera = { ...state.camera, ...(data.camera || {}) };
         state.playerFaction = data.playerFaction || 'blue';
-        state.civilianStatusList = Array.isArray(data.civilianStatusList) ? data.civilianStatusList : [];
         state.lastSavedAt = Number(data.lastSavedAt) || Date.now();
 
         const maxId = Math.max(
@@ -687,12 +613,9 @@
           ...state.buildings.map(b => Number(b.id) || 0)
         );
         idCounter = Math.max(maxId + 1, Number(data.idCounter) || 1);
+        civilianNumberCounter = Number(data.civilianNumberCounter) || state.units.filter(u => u.type === 'civilian').length;
 
-        enforceResidenceCaps();
-        enforceResidenceCaps();
-      refreshDerivedState();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
-        state.civilianStatusList = buildResidenceCivilianStatusList();
+        refreshDerivedState();
         return true;
       } catch (err) {
         console.warn('Load failed:', err);
@@ -714,26 +637,44 @@
 
       refreshDerivedState();
 
-      // Spawn logic: grow up to the cap
-      if (state.civilians < state.civilianCap) {
+      // Spawn logic: grow up to the cap, but ONLY 10 CIVILIANS PER RESIDENCE MAX!
+      // Check each residence for available space
+      const residences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue');
+      let hasSpaceAvailable = false;
+      
+      for (const res of residences) {
+        const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
+        if (civiliansInRes < 10) {
+          hasSpaceAvailable = true;
+          break;
+        }
+      }
+
+      if (hasSpaceAvailable && state.civilians < state.civilianCap) {
         state.civilianGrowthCounter++;
         if (state.civilianGrowthCounter >= 5) {
-          // Spawn anywhere; optionally auto-garrison into a residence with space
-          const res = state.buildings.find(b => b.type === 'residence' && b.faction === 'blue');
-          const spawnX = res ? res.tileX : 2;
-          const spawnY = res ? res.tileY : 2;
-          const newCiv = createUnit('civilian', spawnX, spawnY, 'blue');
-          if (res) newCiv.garrisonedBuildingId = res.id;
-          state.units.push(newCiv);
-          state.civilianGrowthCounter = 0;
-          refreshDerivedState();
+          // Find a residence with space (< 10 civilians)
+          let targetRes = null;
+          for (const res of residences) {
+            const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
+            if (civiliansInRes < 10) {
+              targetRes = res;
+              break;
+            }
+          }
+
+          if (targetRes) {
+            const newCiv = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
+            newCiv.garrisonedBuildingId = targetRes.id;
+            state.units.push(newCiv);
+            state.civilianGrowthCounter = 0;
+            refreshDerivedState();
+          }
         }
       } else {
         state.civilianGrowthCounter = 0;
       }
 
-      enforceResidenceCaps();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
       syncPersistenceTimestamp();
       saveGameState();
       updateUI();
@@ -751,8 +692,6 @@
         processEconomyTick();
       }
 
-      enforceResidenceCaps();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
       state.lastSavedAt = Date.now();
       saveGameState();
     }
@@ -801,9 +740,7 @@
       state.camera.x = - (3 * TILE_SIZE - window.innerWidth / 2);
       state.camera.y = - (3 * TILE_SIZE - window.innerHeight / 2);
 
-      enforceResidenceCaps();
       refreshDerivedState();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
       syncPersistenceTimestamp();
       saveGameState();
       updateUIcons();
@@ -818,7 +755,7 @@
       const tileX = Math.floor(x);
       const tileY = Math.floor(y);
 
-      return {
+      const unit = {
         id: idCounter++,
         entityType: 'unit',
         type: type, // 'soldier' | 'tank' | 'civilian'
@@ -842,6 +779,13 @@
         garrisonedBuildingId: null, // Can enter ANY structure
         targetBuildingId: null
       };
+
+      // Assign proper civilian numbering
+      if (isCivilian) {
+        unit.civilianNumber = ++civilianNumberCounter;
+      }
+
+      return unit;
     }
 
     function createBuilding(type, tileX, tileY, faction = 'blue') {
@@ -1246,9 +1190,6 @@
 
       state.resources -= cost;
       state.buildings.push(createBuilding(type, tileX, tileY, 'blue'));
-      enforceResidenceCaps();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
-      refreshDerivedState();
       updateUI();
     }
 
@@ -1290,9 +1231,6 @@
         state.units.push(newUnit);
         trainedCount++;
       }
-      enforceResidenceCaps();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
-      refreshDerivedState();
       updateUI();
     }
 
@@ -1423,9 +1361,6 @@
           unit.targetMineId = null;
         }
       }
-      enforceResidenceCaps();
-      state.civilianStatusList = buildResidenceCivilianStatusList();
-      refreshDerivedState();
       updateUI();
     }
 
@@ -1791,8 +1726,7 @@
     function updateUI() {
       document.getElementById('ui-resources').innerText = Math.floor(state.resources);
       const totalCivs = state.units.filter(u => u.type === 'civilian').length;
-      const totalCap = state.civilianCap;
-      document.getElementById('ui-civilians').innerText = `${totalCivs} / ${totalCap}`;
+      document.getElementById('ui-civilians').innerText = `${totalCivs} / ${state.civilianCap}`;
       
       let totalMiners = state.units.filter(u => {
         if (u.type !== 'civilian') return false;
@@ -1830,21 +1764,21 @@
           if (garrisonedUnits.length === 0) {
             unitBreakdown = "<span style='color: #5f6459;'>None</span>";
           } else {
-            unitBreakdown = garrisonedUnits
-              .sort((a, b) => a.id - b.id)
-              .map(u => {
-                const status = u.type === 'civilian' ? getCivilianStatusLabel(u) : 'Garrisoned';
-                return `<div style="margin-top:2px;"><span style="color:#d9a441;">#${u.id}</span> ${u.type.charAt(0).toUpperCase() + u.type.slice(1)} | <span style="color:#9a9f8e;">${status}</span></div>`;
-              })
-              .join('');
+            const counts = {};
+            garrisonedUnits.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
+            unitBreakdown = Object.entries(counts)
+              .map(([type, count]) => `<span style="color:#d9a441;">${count} ${type.charAt(0).toUpperCase() + type.slice(1)}${count > 1 ? 's' : ''}</span>`)
+              .join(', ');
+          }
+
+          // Special note for residences about the 10 civilian cap
+          let residenceNote = '';
+          if (hoveredBld.type === 'residence') {
+            const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === hoveredBld.id).length;
+            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(217, 164, 65, 0.1); border-left: 2px solid #d9a441; font-size: 10px; color: #d9a441;"><strong>RESIDENCE CAP:</strong> Max 10 Civilians (${civiliansInRes}/10)</div>`;
           }
 
           titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;
-          const residenceSnapshot = state.civilianStatusList.find(entry => entry.residenceId === hoveredBld.id);
-          const residenceList = residenceSnapshot && residenceSnapshot.civilians.length
-            ? residenceSnapshot.civilians.map(c => `<div style="margin-top:2px;">#${c.id} | HP ${Math.ceil(c.hp)}/${c.maxHp} | ${c.status}</div>`).join('')
-            : '';
-
           detailsEl.innerHTML = `
             <div style="margin-bottom: 4px;">
               <strong style="color: #e8e4d8;">${info.title} Info Card</strong>
@@ -1854,8 +1788,8 @@
             <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
               <div><strong>HP:</strong> ${hoveredBld.hp}/${hoveredBld.maxHp} | <strong>Tile:</strong> (${hoveredBld.tileX}, ${hoveredBld.tileY})</div>
               <div style="margin-top: 2px;"><strong>Units Inside (${garrisonedUnits.length}/${maxCap}):</strong> ${unitBreakdown}</div>
-              ${hoveredBld.type === 'residence' && residenceList ? `<div style="margin-top:6px;"><strong>Civilian Status List:</strong>${residenceList}</div>` : ''}
             </div>
+            ${residenceNote}
           `;
           deselectBtn.style.display = 'none';
           return;
@@ -1878,7 +1812,16 @@
         
         const stackText = unitsOnSameTile.length > 1 ? ` (${uIdx} of ${unitsOnSameTile.length} on Tile)` : '';
 
-        titleEl.innerText = `${entity.type.toUpperCase()} (ID: ${entity.id})${stackText}`;
+        // For civilians, display the civilian number prominently
+        let titleText = `${entity.type.toUpperCase()}`;
+        if (entity.type === 'civilian' && entity.civilianNumber) {
+          titleText += ` #${entity.civilianNumber}`;
+        } else {
+          titleText += ` (ID: ${entity.id})`;
+        }
+        titleText += stackText;
+
+        titleEl.innerText = titleText;
         detailsEl.innerText = `HP: ${Math.ceil(entity.hp)}/${entity.maxHp} | Tile: (${uTileX}, ${uTileY})${targetText}`;
 
         if (entity.type === 'civilian') {
@@ -1905,16 +1848,21 @@
         if (garrisonedUnits.length === 0) {
           unitBreakdown = "<span style='color: #5f6459;'>None</span>";
         } else {
-          unitBreakdown = garrisonedUnits
-            .sort((a, b) => a.id - b.id)
-            .map(u => {
-              const status = u.type === 'civilian' ? getCivilianStatusLabel(u) : 'Garrisoned';
-              return `<div style="margin-top:2px;"><span style="color:#d9a441;">#${u.id}</span> ${u.type.charAt(0).toUpperCase() + u.type.slice(1)} | <span style="color:#9a9f8e;">${status}</span></div>`;
-            })
-            .join('');
+          const counts = {};
+          garrisonedUnits.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
+          unitBreakdown = Object.entries(counts)
+            .map(([type, count]) => `<span style="color:#d9a441;">${count} ${type.charAt(0).toUpperCase() + type.slice(1)}${count > 1 ? 's' : ''}</span>`)
+            .join(', ');
         }
 
         titleEl.innerText = `${info.title.toUpperCase()} (ID: ${entity.id})`;
+
+        // Special note for residences about the 10 civilian cap
+        let residenceNote = '';
+        if (entity.type === 'residence') {
+          const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === entity.id).length;
+          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(217, 164, 65, 0.1); border-left: 2px solid #d9a441; font-size: 10px; color: #d9a441;"><strong>RESIDENCE CAP:</strong> Max 10 Civilians (${civiliansInRes}/10)</div>`;
+        }
 
         detailsEl.innerHTML = `
           <div style="margin-bottom: 4px;">
@@ -1926,6 +1874,7 @@
             <div><strong>HP:</strong> ${entity.hp}/${entity.maxHp} | <strong>Tile:</strong> (${entity.tileX}, ${entity.tileY})${targetText}</div>
             <div style="margin-top: 2px;"><strong>Units Inside (${garrisonedUnits.length}/${maxCap}):</strong> ${unitBreakdown}</div>
           </div>
+          ${residenceNote}
         `;
 
         // Deploy button available for ANY structure holding garrisoned units

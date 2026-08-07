@@ -624,56 +624,53 @@
     }
 
     function processEconomyTick() {
-      let miners = 0;
+      // Process mining for each mine individually
       state.buildings.forEach(b => {
         if (b.type === 'mine') {
           const activeMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId === b.id || u.garrisonedBuildingId === b.id)).length;
           b.assignedCivilians = activeMiners;
-          miners += activeMiners;
+          
+          // Add mining progress for this mine
+          const mineResourceRate = activeMiners * (1 / 60);
+          b.miningProgress += mineResourceRate;
+          
+          // When progress >= 1, harvest a resource and update global resources
+          if (b.miningProgress >= 1) {
+            const harvestedAmount = Math.floor(b.miningProgress);
+            state.resources += harvestedAmount;
+            b.miningProgress -= harvestedAmount;
+          }
         }
       });
 
-      state.resources += miners * (1 / 60);
-
       refreshDerivedState();
 
-      // Spawn logic: grow up to the cap, but ONLY 10 CIVILIANS PER RESIDENCE MAX!
-      // Check each residence for available space
+      // Process civilian growth for each residence individually
       const residences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue');
-      let hasSpaceAvailable = false;
       
-      for (const res of residences) {
+      residences.forEach(res => {
         const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
-        if (civiliansInRes < 10) {
-          hasSpaceAvailable = true;
-          break;
-        }
-      }
-
-      if (hasSpaceAvailable && state.civilians < state.civilianCap) {
-        state.civilianGrowthCounter++;
-        if (state.civilianGrowthCounter >= 5) {
-          // Find a residence with space (< 10 civilians)
-          let targetRes = null;
-          for (const res of residences) {
-            const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
-            if (civiliansInRes < 10) {
-              targetRes = res;
-              break;
-            }
-          }
-
-          if (targetRes) {
-            const newCiv = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
-            newCiv.garrisonedBuildingId = targetRes.id;
+        
+        // Only grow if there's space in this residence AND we haven't hit global cap
+        if (civiliansInRes < 10 && state.civilians < state.civilianCap) {
+          res.growthProgress++;
+          
+          if (res.growthProgress >= 5) {
+            // Spawn a civilian into this residence
+            const newCiv = createUnit('civilian', res.tileX, res.tileY, 'blue');
+            newCiv.garrisonedBuildingId = res.id;
             state.units.push(newCiv);
-            state.civilianGrowthCounter = 0;
+            res.growthProgress = 0;
             refreshDerivedState();
           }
+        } else if (civiliansInRes >= 10 || state.civilians >= state.civilianCap) {
+          // Halt growth if full
+          res.growthProgress = 0;
         }
-      } else {
-        state.civilianGrowthCounter = 0;
-      }
+      });
+      
+      // Clear old global counter (kept for backwards compatibility)
+      state.civilianGrowthCounter = 0;
 
       syncPersistenceTimestamp();
       saveGameState();
@@ -800,7 +797,9 @@
         maxHp: 20,
         assignedCivilians: 0,
         trainingQueue: [],
-        capacity: 10 // Max capacity for garrisoning units in any structure
+        capacity: 10, // Max capacity for garrisoning units in any structure
+        miningProgress: 0, // For mines: tracks fractional resource generation (0-1)
+        growthProgress: 0  // For residences: tracks civilian growth progress (0-5)
       };
 
       if (type === 'residence') { base.cost = 100; base.capBonus = 10; base.capacity = 10; }
@@ -1560,6 +1559,31 @@
       state.buildings.forEach(b => {
         const px = b.tileX * TILE_SIZE + state.camera.x;
         const py = b.tileY * TILE_SIZE + state.camera.y;
+
+        // Render progress bar background first (behind building)
+        if (b.type === 'mine' && b.miningProgress > 0) {
+          // Cyan progress bar for mining progress (0-1, where 1 = ready to harvest)
+          const barHeight = 3;
+          ctx.fillStyle = 'rgba(34, 211, 238, 0.4)'; // Cyan background
+          ctx.fillRect(px, py + TILE_SIZE - barHeight, TILE_SIZE, barHeight);
+          
+          // Brighter cyan for actual progress
+          ctx.fillStyle = 'rgb(34, 211, 238)';
+          const progressWidth = TILE_SIZE * Math.min(b.miningProgress, 1);
+          ctx.fillRect(px, py + TILE_SIZE - barHeight, progressWidth, barHeight);
+        }
+
+        if (b.type === 'residence' && b.growthProgress > 0) {
+          // Cyan progress bar for civilian growth (0-5, where 5 = ready to spawn)
+          const barHeight = 3;
+          ctx.fillStyle = 'rgba(34, 211, 238, 0.4)'; // Cyan background
+          ctx.fillRect(px, py + TILE_SIZE - barHeight, TILE_SIZE, barHeight);
+          
+          // Brighter cyan for actual progress
+          ctx.fillStyle = 'rgb(34, 211, 238)';
+          const progressWidth = TILE_SIZE * Math.min(b.growthProgress / 5, 1); // 0-5 normalized to 0-1
+          ctx.fillRect(px, py + TILE_SIZE - barHeight, progressWidth, barHeight);
+        }
 
         let img = null;
         if (b.type === 'mine') img = IMAGES.mine;

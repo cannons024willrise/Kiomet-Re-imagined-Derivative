@@ -999,29 +999,44 @@
     function clampCameraToVisibleArea() {
       if (!GAME_CONFIG.FOG_OF_WAR_ENABLED) return;
       const bounds = getVisibleTileBounds();
-      if (!bounds || !canvas.width || !canvas.height || state.camera.zoom <= 0) return;
+      if (!bounds || !canvas.width || !canvas.height) return;
+
+      // The viewport itself must fit inside the currently visible region.
+      // If the player zooms too far out, automatically zoom in until that
+      // condition is true. This prevents the camera from ever exposing
+      // tiles outside the current vision area.
+      const spanW = Math.max(1, bounds.maxX - bounds.minX + 1);
+      const spanH = Math.max(1, bounds.maxY - bounds.minY + 1);
+      const requiredZoomX = canvas.width / (spanW * TILE_SIZE);
+      const requiredZoomY = canvas.height / (spanH * TILE_SIZE);
+      const requiredZoom = Math.max(0.4, requiredZoomX, requiredZoomY);
+
+      if (state.camera.zoom < requiredZoom) {
+        state.camera.zoom = requiredZoom;
+      }
 
       const viewTilesW = canvas.width / (TILE_SIZE * state.camera.zoom);
       const viewTilesH = canvas.height / (TILE_SIZE * state.camera.zoom);
-      const spanW = (bounds.maxX - bounds.minX + 1);
-      const spanH = (bounds.maxY - bounds.minY + 1);
 
-      let leftTile;
+      // At the current zoom, keep the entire screen rectangle inside the
+      // visible bounding rectangle. If the visible region is larger than the
+      // viewport, panning is limited to that region.
+      const maxLeft = bounds.maxX + 1 - viewTilesW;
+      const maxTop = bounds.maxY + 1 - viewTilesH;
+
+      let leftTile = (-state.camera.x) / TILE_SIZE;
+      let topTile = (-state.camera.y) / TILE_SIZE;
+
       if (viewTilesW >= spanW) {
         leftTile = bounds.minX + (spanW - viewTilesW) / 2;
       } else {
-        const minLeft = bounds.minX;
-        const maxLeft = bounds.maxX + 1 - viewTilesW;
-        leftTile = Math.min(Math.max((-state.camera.x) / TILE_SIZE, minLeft), maxLeft);
+        leftTile = Math.max(bounds.minX, Math.min(leftTile, maxLeft));
       }
 
-      let topTile;
       if (viewTilesH >= spanH) {
         topTile = bounds.minY + (spanH - viewTilesH) / 2;
       } else {
-        const minTop = bounds.minY;
-        const maxTop = bounds.maxY + 1 - viewTilesH;
-        topTile = Math.min(Math.max((-state.camera.y) / TILE_SIZE, minTop), maxTop);
+        topTile = Math.max(bounds.minY, Math.min(topTile, maxTop));
       }
 
       state.camera.x = -leftTile * TILE_SIZE;
@@ -1674,7 +1689,7 @@
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+      const newZoom = Math.max(0.4, Math.min(10, state.camera.zoom * zoomFactor));
 
       // Zoom toward the cursor so the tile under the mouse stays put, instead of drifting
       const worldBefore = screenToWorld(e.clientX, e.clientY);
@@ -1699,7 +1714,7 @@
       if (ZOOM_KEYS.includes(k)) {
         e.preventDefault();
         const zoomFactor = k === 'q' ? 1.1 : 0.9;
-        state.camera.zoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+        state.camera.zoom = Math.max(0.4, Math.min(10, state.camera.zoom * zoomFactor));
         clampCameraToVisibleArea();
         return;
       }

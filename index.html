@@ -658,7 +658,7 @@
       const baseInfo = {
         residence: {
           title: "Residence",
-          desc: "Increases civilian population capacity and passively spawns new civilians.",
+          desc: "Increases civilian capacity, keeps a production register, and spawns civilians until the register is full.",
           stats: `Cost: ${cost}g | Housing Cap: +${stats.capacity} Civilians | Growth: 1 per ${civGrowthTicks} tick(s) | Garrison: ${stats.capacity} Units`
         },
         barracks: {
@@ -979,6 +979,20 @@
         idCounter = Math.max(maxId + 1, Number(data.idCounter) || 1);
         civilianNumberCounter = Number(data.civilianNumberCounter) || state.units.filter(u => u.type === 'civilian').length;
 
+        state.buildings.forEach(b => {
+          if (b.type === 'residence' && !Array.isArray(b.civilianRegister)) {
+            b.civilianRegister = state.units
+              .filter(u => u.type === 'civilian' && u.garrisonedBuildingId === b.id)
+              .map(u => ({
+                civilianId: u.id,
+                civilianNumber: u.civilianNumber || null,
+                homeResidenceId: b.id,
+                createdAt: Date.now(),
+                status: 'garrisoned'
+              }));
+          }
+        });
+
         refreshDerivedState();
         return true;
       } catch (err) {
@@ -993,11 +1007,11 @@
         if (b.type === 'mine') {
           const activeMiners = state.units.filter(u => u.type === 'civilian' && (u.assignedMineId === b.id || u.garrisonedBuildingId === b.id)).length;
           b.assignedCivilians = activeMiners;
-          
+
           // Add mining progress for this mine
           const mineResourceRate = activeMiners * GAME_CONFIG.MINING_RATE_PER_TICK;
           b.miningProgress += mineResourceRate;
-          
+
           // When progress >= 1, harvest a resource and update global resources
           if (b.miningProgress >= 1) {
             const harvestedAmount = Math.floor(b.miningProgress);
@@ -1011,32 +1025,40 @@
 
       // Process civilian growth for each residence individually
       const residences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue');
-      
+
       residences.forEach(res => {
+        const register = ensureResidenceRegister(res);
         const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
         const maxPerResidence = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE;
-        
+
+        // Hard stop: each residence can only ever produce 10 civilians total.
+        if (register.length >= maxPerResidence) {
+          res.growthProgress = 0;
+          return;
+        }
+
         // Only grow if:
         // 1. This residence has capacity (civs in it < max, meaning it can hold more)
         // 2. We haven't hit global cap
-        // If civs die, this residence can produce more to fill back up
         if (civiliansInRes < maxPerResidence && state.civilians < state.civilianCap) {
           res.growthProgress++;
-          
+
           if (res.growthProgress >= GAME_CONFIG.CIVILIAN_GROWTH_TICKS) {
             // Spawn a civilian into this residence
             const newCiv = createUnit('civilian', res.tileX, res.tileY, 'blue');
             newCiv.garrisonedBuildingId = res.id;
+            newCiv.homeResidenceId = res.id;
             state.units.push(newCiv);
+            registerCivilianToResidence(res, newCiv, 'garrisoned');
             res.growthProgress = 0;
             refreshDerivedState();
           }
-        } else if (civiliansInRes >= maxPerResidence || state.civilians >= state.civilianCap) {
+        } else {
           // Halt growth if full or global cap hit
           res.growthProgress = 0;
         }
       });
-      
+
       // Clear old global counter (kept for backwards compatibility)
       state.civilianGrowthCounter = 0;
 
@@ -1081,7 +1103,9 @@
         const targetRes = (i < 10) ? res1 : res2;
         const civ = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
         civ.garrisonedBuildingId = targetRes.id;
+        civ.homeResidenceId = targetRes.id;
         state.units.push(civ);
+        registerCivilianToResidence(targetRes, civ, 'starting');
       }
 
       // Procedurally / Naturally Generated Mines across the map
@@ -1155,7 +1179,7 @@
     function createBuilding(type, tileX, tileY, faction = 'blue') {
       const cost = GAME_CONFIG.BUILDING_COSTS[type] || 0;
       const stats = GAME_CONFIG.BUILDING_STATS[type] || { capacity: 10, vision: 0 };
-      
+
       const base = {
         id: idCounter++,
         entityType: 'building',
@@ -1172,10 +1196,30 @@
         cost: cost,
         capBonus: (type === 'residence') ? stats.capacity : 0,
         miningProgress: 0, // For mines: tracks fractional resource generation (0-1)
-        growthProgress: 0  // For residences: tracks civilian growth progress (0-5)
+        growthProgress: 0,  // For residences: tracks civilian growth progress (0-5)
+        civilianRegister: type === 'residence' ? [] : null
       };
 
       return base;
+    }
+
+    function ensureResidenceRegister(residence) {
+      if (!residence || residence.type !== 'residence') return [];
+      if (!Array.isArray(residence.civilianRegister)) residence.civilianRegister = [];
+      return residence.civilianRegister;
+    }
+
+    function registerCivilianToResidence(residence, civilian, status = 'garrisoned') {
+      const register = ensureResidenceRegister(residence);
+      if (!residence || !civilian) return register;
+      register.push({
+        civilianId: civilian.id,
+        civilianNumber: civilian.civilianNumber,
+        homeResidenceId: residence.id,
+        createdAt: Date.now(),
+        status
+      });
+      return register;
     }
 
     // ==========================================
@@ -2266,7 +2310,16 @@
           let residenceNote = '';
           if (hoveredBld.type === 'residence') {
             const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === hoveredBld.id).length;
-            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows if not full | Replenishes if losses occur</div>`;
+            const register = Array.isArray(hoveredBld.civilianRegister) ? hoveredBld.civilianRegister : [];
+            const recentIds = register.slice(-6).map(entry => `#${entry.civilianNumber ?? entry.civilianId}`).join(', ') || 'None';
+            residenceNote = `
+              <div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;">
+                <strong>CAPACITY:</strong> ${civiliansInRes}/10 | Produced: ${register.length}/10 | Production stops when register is full
+              </div>
+              <div style="margin-top: 4px; font-size: 10px; color: #9a9f8e;">
+                <strong>REGISTER:</strong> ${recentIds}
+              </div>
+            `;
           }
 
           titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;

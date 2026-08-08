@@ -632,6 +632,14 @@
       FOG_SHROUD_COLOR: 'rgba(11, 13, 10, 0.7)',  // Dark fog overlay
       EXPLORED_COLOR: 'rgba(60, 70, 60, 0.3)'     // Slightly visible explored areas
     };
+
+    function getBuildingCost(type) {
+      return Number(GAME_CONFIG.BUILDING_COSTS?.[type] ?? 0);
+    }
+
+    function getUnitCost(type) {
+      return Number(GAME_CONFIG.UNIT_COSTS?.[type] ?? 0);
+    }
     
     // Convenience constants (derived from config)
     let TILE_SIZE = GAME_CONFIG.TILE_SIZE;
@@ -659,10 +667,10 @@
 
     // Dynamic building info that reads from GAME_CONFIG
     function getBuildingInfo(type) {
-      const cost = GAME_CONFIG.BUILDING_COSTS[type] || 0;
+      const cost = getBuildingCost(type);
       const stats = GAME_CONFIG.BUILDING_STATS[type] || { capacity: 10, vision: 0 };
-      const soldierCost = GAME_CONFIG.UNIT_COSTS.soldier || 50;
-      const tankCost = GAME_CONFIG.UNIT_COSTS.tank || 300;
+      const soldierCost = getUnitCost('soldier');
+      const tankCost = getUnitCost('tank');
       const civGrowthTicks = GAME_CONFIG.CIVILIAN_GROWTH_TICKS || 5;
       const maxCap = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10;
       
@@ -700,7 +708,7 @@
     // Dynamic unit info that reads from GAME_CONFIG
     function getUnitInfo(type) {
       const stats = GAME_CONFIG.UNIT_STATS[type] || GAME_CONFIG.UNIT_STATS.soldier;
-      const cost = GAME_CONFIG.UNIT_COSTS[type] || 0;
+      const cost = getUnitCost(type);
       const costText = cost > 0 ? `${cost}g + 1 Civ` : 'Auto-spawn';
       
       return {
@@ -807,7 +815,7 @@
       
       buttons.forEach((btn, idx) => {
         const buildType = buildings[idx];
-        const cost = GAME_CONFIG.BUILDING_COSTS[buildType] || 0;
+        const cost = getBuildingCost(buildType);
         const tag = btn.querySelector('.shortcut-tag');
         if (tag) {
           tag.innerText = `(${cost}g)`;
@@ -1200,7 +1208,7 @@
     }
 
     function createBuilding(type, tileX, tileY, faction = 'blue') {
-      const cost = GAME_CONFIG.BUILDING_COSTS[type] || 0;
+      const cost = getBuildingCost(type);
       const stats = GAME_CONFIG.BUILDING_STATS[type] || { capacity: 10, vision: 0 };
 
       const base = {
@@ -1610,8 +1618,7 @@
     }
 
     function placeBuilding(type, tileX, tileY) {
-      const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
-      const cost = costs[type];
+      const cost = getBuildingCost(type);
 
       if (state.resources < cost) {
         showDialog("Resource Deficit", `Insufficient resources to construct ${type.toUpperCase()}. Required: ${cost}g.`);
@@ -1627,7 +1634,7 @@
     }
 
     function trainUnit(building, unitType, count = 1, targetTile = null) {
-      const costPerUnit = GAME_CONFIG.UNIT_COSTS[unitType] || 0;
+      const costPerUnit = getUnitCost(unitType);
       let trainedCount = 0;
 
       for (let i = 0; i < count; i++) {
@@ -1804,7 +1811,7 @@
         return;
       }
 
-      const soldierCost = GAME_CONFIG.UNIT_COSTS.soldier || 50;
+      const soldierCost = getUnitCost('soldier');
       const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
       const dialog = document.getElementById('game-modal');
       
@@ -1866,7 +1873,7 @@
         return;
       }
 
-      const tankCost = GAME_CONFIG.UNIT_COSTS.tank || 300;
+      const tankCost = getUnitCost('tank');
       const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
       const dialog = document.getElementById('game-modal');
       
@@ -2238,8 +2245,7 @@
       const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
 
       if (state.buildMode) {
-        const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
-        const cost = costs[state.buildMode] || 0;
+        const cost = getBuildingCost(state.buildMode);
         const occupied = state.buildings.some(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
         const affordable = state.resources >= cost;
         const valid = !occupied && affordable;

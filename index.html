@@ -967,6 +967,65 @@
       });
 
       state.visibleTiles = newVisibleTiles;
+      clampCameraToVisibleArea();
+    }
+
+    function getVisibleTileBounds() {
+      if (!state.visibleTiles || state.visibleTiles.size === 0) return null;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      state.visibleTiles.forEach(key => {
+        const [xStr, yStr] = key.split(',');
+        const x = Number(xStr);
+        const y = Number(yStr);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      });
+
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        return null;
+      }
+
+      return { minX, minY, maxX, maxY };
+    }
+
+    function clampCameraToVisibleArea() {
+      if (!GAME_CONFIG.FOG_OF_WAR_ENABLED) return;
+      const bounds = getVisibleTileBounds();
+      if (!bounds || !canvas.width || !canvas.height || state.camera.zoom <= 0) return;
+
+      const viewTilesW = canvas.width / (TILE_SIZE * state.camera.zoom);
+      const viewTilesH = canvas.height / (TILE_SIZE * state.camera.zoom);
+      const spanW = (bounds.maxX - bounds.minX + 1);
+      const spanH = (bounds.maxY - bounds.minY + 1);
+
+      let leftTile;
+      if (viewTilesW >= spanW) {
+        leftTile = bounds.minX + (spanW - viewTilesW) / 2;
+      } else {
+        const minLeft = bounds.minX;
+        const maxLeft = bounds.maxX + 1 - viewTilesW;
+        leftTile = Math.min(Math.max((-state.camera.x) / TILE_SIZE, minLeft), maxLeft);
+      }
+
+      let topTile;
+      if (viewTilesH >= spanH) {
+        topTile = bounds.minY + (spanH - viewTilesH) / 2;
+      } else {
+        const minTop = bounds.minY;
+        const maxTop = bounds.maxY + 1 - viewTilesH;
+        topTile = Math.min(Math.max((-state.camera.y) / TILE_SIZE, minTop), maxTop);
+      }
+
+      state.camera.x = -leftTile * TILE_SIZE;
+      state.camera.y = -topTile * TILE_SIZE;
     }
 
     function isTileVisible(x, y) {
@@ -1203,6 +1262,7 @@
       state.camera.y = - (3 * TILE_SIZE - window.innerHeight / 2);
 
       refreshDerivedState();
+      clampCameraToVisibleArea();
       syncPersistenceTimestamp();
       saveGameState();
       updateUIcons();
@@ -1306,6 +1366,7 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      clampCameraToVisibleArea();
     }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
@@ -1556,6 +1617,7 @@
         const dy = e.clientY - state.camera.dragStart.y;
         state.camera.x += dx / state.camera.zoom;
         state.camera.y += dy / state.camera.zoom;
+        clampCameraToVisibleArea();
         state.camera.dragStart = { x: e.clientX, y: e.clientY };
       } else if (mouseDownInfo) {
         if (mouseDownInfo.screenX === undefined) {
@@ -1571,6 +1633,7 @@
           }
           state.camera.x += e.movementX / state.camera.zoom;
           state.camera.y += e.movementY / state.camera.zoom;
+          clampCameraToVisibleArea();
         }
       }
 
@@ -1619,6 +1682,7 @@
       const worldAfter = screenToWorld(e.clientX, e.clientY);
       state.camera.x += (worldAfter.x - worldBefore.x) * TILE_SIZE;
       state.camera.y += (worldAfter.y - worldBefore.y) * TILE_SIZE;
+      clampCameraToVisibleArea();
     });
 
     window.addEventListener('keydown', (e) => {
@@ -1636,6 +1700,7 @@
         e.preventDefault();
         const zoomFactor = k === 'q' ? 1.1 : 0.9;
         state.camera.zoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+        clampCameraToVisibleArea();
         return;
       }
       if (PAN_KEYS.includes(k)) keysHeld.add(k);
@@ -1653,6 +1718,7 @@
       if (keysHeld.has('s') || keysHeld.has('arrowdown')) state.camera.y -= speed;
       if (keysHeld.has('a') || keysHeld.has('arrowleft')) state.camera.x += speed;
       if (keysHeld.has('d') || keysHeld.has('arrowright')) state.camera.x -= speed;
+      clampCameraToVisibleArea();
     }
 
     // ==========================================
@@ -2034,6 +2100,7 @@
     // 8. RENDER PIPELINE
     // ==========================================
     function render() {
+      clampCameraToVisibleArea();
       ctx.fillStyle = '#0b0d0a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 

@@ -629,8 +629,8 @@
         radar: 6,   // Radar has superior vision
         mine: 1
       },
-      FOG_SHROUD_COLOR: 'rgba(11, 13, 10, 0.7)',  // Dark fog overlay
-      EXPLORED_COLOR: 'rgba(60, 70, 60, 0.3)'     // Slightly visible explored areas
+      FOG_SHROUD_COLOR: '#0b0d0a',  // FULLY OPAQUE unexplored fog
+      EXPLORED_COLOR: '#0b0d0a'     // FULLY OPAQUE explored-but-not-visible fog
     };
 
     function getBuildingCost(type) {
@@ -1470,6 +1470,7 @@
     //    Right click -> issue move / target order to the selected entity
     //    Middle drag -> pan camera (alt. to left-drag)
     //    WASD/Arrows -> pan camera
+    //    Q / E       -> zoom in / out
     //    Scroll      -> zoom toward cursor
     //    Escape      -> cancel build mode, else deselect
     // ==========================================
@@ -1478,6 +1479,7 @@
     let isPanningLeft = false;
     const keysHeld = new Set();
     const PAN_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+    const ZOOM_KEYS = ['q', 'e'];
 
     function setCursor(style) {
       canvas.style.cursor = style;
@@ -1630,6 +1632,12 @@
         return;
       }
       const k = e.key.toLowerCase();
+      if (ZOOM_KEYS.includes(k)) {
+        e.preventDefault();
+        const zoomFactor = k === 'q' ? 1.1 : 0.9;
+        state.camera.zoom = Math.max(0.4, Math.min(2.5, state.camera.zoom * zoomFactor));
+        return;
+      }
       if (PAN_KEYS.includes(k)) keysHeld.add(k);
     });
 
@@ -2295,13 +2303,13 @@
           }
         }
         
-        // Render explored but not visible fog (darker shroud)
+        // Render explored but not visible fog (FULLY OPAQUE)
         ctx.fillStyle = GAME_CONFIG.EXPLORED_COLOR;
         for (let gridX = Math.floor((-state.camera.x) / TILE_SIZE) - 1; gridX < Math.floor((-state.camera.x + canvas.width) / TILE_SIZE) + 1; gridX++) {
           for (let gridY = Math.floor((-state.camera.y) / TILE_SIZE) - 1; gridY < Math.floor((-state.camera.y + canvas.height) / TILE_SIZE) + 1; gridY++) {
             const tileKey = `${gridX},${gridY}`;
             
-            // Show light fog on explored but not visible tiles
+            // Completely conceal explored-but-not-currently-visible tiles
             if (state.exploredTiles.has(tileKey) && !state.visibleTiles.has(tileKey)) {
               const px = gridX * TILE_SIZE + state.camera.x;
               const py = gridY * TILE_SIZE + state.camera.y;
@@ -2355,6 +2363,9 @@
 
       applyKeyboardPan(deltaTime);
       updateCombatAndMovement(deltaTime);
+      // Recalculate vision continuously so moving units/buildings immediately
+      // reveal and conceal tiles according to their configured ranges.
+      updateFogOfWar();
       render();
 
       if (document.visibilityState === 'visible') {
@@ -2470,7 +2481,7 @@
         }
 
         titleEl.innerText = 'Selection: None';
-        detailsEl.innerText = 'Left-click to select a unit or structure. Right-click a tile to move/target it. Drag (or WASD/arrows) to pan, scroll to zoom, Esc to cancel/deselect.';
+        detailsEl.innerText = 'Left-click to select a unit or structure. Right-click a tile to move/target it. Drag (or WASD/arrows) to pan, Q/E to zoom, scroll to zoom toward cursor, Esc to cancel/deselect.';
         deselectBtn.style.display = 'none';
         return;
       }

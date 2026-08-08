@@ -640,6 +640,36 @@
     function getUnitCost(type) {
       return Number(GAME_CONFIG.UNIT_COSTS?.[type] ?? 0);
     }
+
+    function getProductionCap() {
+      return Number(GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10);
+    }
+
+    function ensureTrainingRegister(building) {
+      if (!building || (building.type !== 'barracks' && building.type !== 'armory')) return [];
+      if (!Array.isArray(building.trainingRegister)) building.trainingRegister = [];
+      return building.trainingRegister;
+    }
+
+    function registerTrainedUnit(building, unit, status = 'trained') {
+      const register = ensureTrainingRegister(building);
+      if (!building || !unit) return register;
+      register.push({
+        unitId: unit.id,
+        unitType: unit.type,
+        trainedFromBuildingId: building.id,
+        createdAt: Date.now(),
+        status
+      });
+      return register;
+    }
+
+    function getBuildingProductionRegister(building) {
+      if (!building) return [];
+      if (building.type === 'residence') return ensureResidenceRegister(building);
+      if (building.type === 'barracks' || building.type === 'armory') return ensureTrainingRegister(building);
+      return [];
+    }
     
     // Convenience constants (derived from config)
     let TILE_SIZE = GAME_CONFIG.TILE_SIZE;
@@ -678,17 +708,17 @@
         residence: {
           title: "Residence",
           desc: "Increases civilian capacity, keeps a production register, and spawns civilians until the register is full.",
-          stats: `Cost: ${cost}g | Housing Cap: +${maxCap} Civilians | Growth: 1 per ${civGrowthTicks} tick(s) | Garrison: ${maxCap} Units`
+          stats: `Cost: ${cost}g | Housing Cap: +${maxCap} Civilians | Growth: 1 per ${civGrowthTicks} tick(s) | Produced Cap: ${getProductionCap()} | Garrison: ${maxCap} Units`
         },
         barracks: {
           title: "Barracks",
-          desc: "Military recruitment hub. Converts available civilians into Soldiers.",
-          stats: `Cost: ${cost}g | Train: ${soldierCost}g + 1 Civilian | Garrison: ${stats.capacity} Units`
+          desc: "Military recruitment hub. Converts available civilians into Soldiers until the production register is full.",
+          stats: `Cost: ${cost}g | Train: ${soldierCost}g + 1 Civilian | Produced Cap: ${getProductionCap()} | Garrison: ${stats.capacity} Units`
         },
         armory: {
           title: "Armory",
-          desc: "Heavy weapons factory. Converts available civilians into armored Tanks.",
-          stats: `Cost: ${cost}g | Train: ${tankCost}g + 1 Civilian | Garrison: ${stats.capacity} Units`
+          desc: "Heavy weapons factory. Converts available civilians into armored Tanks until the production register is full.",
+          stats: `Cost: ${cost}g | Train: ${tankCost}g + 1 Civilian | Produced Cap: ${getProductionCap()} | Garrison: ${stats.capacity} Units`
         },
         radar: {
           title: "Radar Station",
@@ -1022,6 +1052,18 @@
                 status: 'garrisoned'
               }));
           }
+
+          if ((b.type === 'barracks' || b.type === 'armory') && !Array.isArray(b.trainingRegister)) {
+            b.trainingRegister = state.units
+              .filter(u => u.trainedFromBuildingId === b.id)
+              .map(u => ({
+                unitId: u.id,
+                unitType: u.type || (b.type === 'barracks' ? 'soldier' : 'tank'),
+                trainedFromBuildingId: b.id,
+                createdAt: Date.now(),
+                status: 'trained'
+              }));
+          }
         });
 
         refreshDerivedState();
@@ -1060,7 +1102,7 @@
       residences.forEach(res => {
         const register = ensureResidenceRegister(res);
         const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
-        const maxPerResidence = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE;
+        const maxPerResidence = getProductionCap();
 
         // Hard stop: each residence can only ever produce 10 civilians total.
         if (register.length >= maxPerResidence) {
@@ -1196,7 +1238,8 @@
         assignedMineId: null,
         targetMineId: null,
         garrisonedBuildingId: null, // Can enter ANY structure
-        targetBuildingId: null
+        targetBuildingId: null,
+        trainedFromBuildingId: null
       };
 
       // Assign proper civilian numbering
@@ -1228,7 +1271,8 @@
         capBonus: (type === 'residence') ? stats.capacity : 0,
         miningProgress: 0, // For mines: tracks fractional resource generation (0-1)
         growthProgress: 0,  // For residences: tracks civilian growth progress (0-5)
-        civilianRegister: type === 'residence' ? [] : null
+        civilianRegister: type === 'residence' ? [] : null,
+        trainingRegister: (type === 'barracks' || type === 'armory') ? [] : null
       };
 
       return base;
@@ -1635,9 +1679,24 @@
 
     function trainUnit(building, unitType, count = 1, targetTile = null) {
       const costPerUnit = getUnitCost(unitType);
+      const productionCap = getProductionCap();
+      const register = ensureTrainingRegister(building);
+
+      if (building && (building.type === 'barracks' || building.type === 'armory') && register.length >= productionCap) {
+        showDialog("Production Cap Reached", `${building.type.toUpperCase()} #${building.id} has already produced ${register.length}/${productionCap} units.`);
+        return;
+      }
+
       let trainedCount = 0;
 
       for (let i = 0; i < count; i++) {
+        if (register.length >= productionCap) {
+          if (trainedCount === 0) {
+            showDialog("Production Cap Reached", `${building.type.toUpperCase()} #${building.id} has already produced ${register.length}/${productionCap} units.`);
+          }
+          break;
+        }
+
         const availableCivIdx = state.units.findIndex(u => u.type === 'civilian' && u.assignedMineId == null);
 
         if (availableCivIdx === -1) {
@@ -1659,6 +1718,7 @@
         const spawnX = building.tileX;
         const spawnY = building.tileY;
         const newUnit = createUnit(unitType, spawnX, spawnY, 'blue');
+        newUnit.trainedFromBuildingId = building.id;
 
         if (targetTile) {
           newUnit.targetX = targetTile.x;
@@ -1669,6 +1729,7 @@
         }
 
         state.units.push(newUnit);
+        registerTrainedUnit(building, newUnit, 'trained');
         trainedCount++;
       }
       updateUI();
@@ -1825,7 +1886,18 @@
         return;
       }
 
-      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / soldierCost));
+      const productionCap = getProductionCap();
+      const register = ensureTrainingRegister(barracks);
+      const remainingCap = Math.max(0, productionCap - register.length);
+      if (remainingCap === 0) {
+        document.getElementById('modal-body').innerHTML = `<p>This Barracks has already reached its production cap of ${productionCap} units.</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / soldierCost), remainingCap);
       const maxTrain = Math.max(1, maxAffordable);
 
       document.getElementById('modal-body').innerHTML = `
@@ -1887,7 +1959,18 @@
         return;
       }
 
-      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / tankCost));
+      const productionCap = getProductionCap();
+      const register = ensureTrainingRegister(armory);
+      const remainingCap = Math.max(0, productionCap - register.length);
+      if (remainingCap === 0) {
+        document.getElementById('modal-body').innerHTML = `<p>This Armory has already reached its production cap of ${productionCap} units.</p>`;
+        const actionsEl = document.getElementById('modal-actions');
+        actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
+        dialog.showModal();
+        return;
+      }
+
+      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / tankCost), remainingCap);
       const maxTrain = Math.max(1, maxAffordable);
 
       document.getElementById('modal-body').innerHTML = `
@@ -2335,20 +2418,38 @@
               .join(', ');
           }
 
-          // Special note for residences about the 10 civilian capacity
+          // Special note for production buildings about register caps
           let residenceNote = '';
-          if (hoveredBld.type === 'residence') {
-            const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === hoveredBld.id).length;
-            const register = Array.isArray(hoveredBld.civilianRegister) ? hoveredBld.civilianRegister : [];
-            const recentIds = register.slice(-6).map(entry => `#${entry.civilianNumber ?? entry.civilianId}`).join(', ') || 'None';
-            residenceNote = `
-              <div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;">
-                <strong>CAPACITY:</strong> ${civiliansInRes}/${GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10} | Produced: ${register.length}/${GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10} | Production stops when register is full
-              </div>
-              <div style="margin-top: 4px; font-size: 10px; color: #9a9f8e;">
-                <strong>REGISTER:</strong> ${recentIds}
-              </div>
-            `;
+          if (hoveredBld.type === 'residence' || hoveredBld.type === 'barracks' || hoveredBld.type === 'armory') {
+            const productionCap = getProductionCap();
+            const register = getBuildingProductionRegister(hoveredBld);
+            const recentIds = register.slice(-6).map(entry => {
+              if (hoveredBld.type === 'residence') {
+                return `#${entry.civilianNumber ?? entry.civilianId}`;
+              }
+              return `#${entry.unitId}`;
+            }).join(', ') || 'None';
+
+            if (hoveredBld.type === 'residence') {
+              const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === hoveredBld.id).length;
+              residenceNote = `
+                <div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;">
+                  <strong>CAPACITY:</strong> ${civiliansInRes}/${productionCap} | Produced: ${register.length}/${productionCap} | Production stops when register is full
+                </div>
+                <div style="margin-top: 4px; font-size: 10px; color: #9a9f8e;">
+                  <strong>REGISTER:</strong> ${recentIds}
+                </div>
+              `;
+            } else {
+              residenceNote = `
+                <div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;">
+                  <strong>PRODUCTION:</strong> ${register.length}/${productionCap} | Register fills permanently
+                </div>
+                <div style="margin-top: 4px; font-size: 10px; color: #9a9f8e;">
+                  <strong>REGISTER:</strong> ${recentIds}
+                </div>
+              `;
+            }
           }
 
           titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;
@@ -2430,11 +2531,18 @@
 
         titleEl.innerText = `${info.title.toUpperCase()} (ID: ${entity.id})`;
 
-        // Special note for residences about the 10 civilian capacity
+        // Special note for production buildings about register caps
         let residenceNote = '';
-        if (entity.type === 'residence') {
-          const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === entity.id).length;
-          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/${GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10} | Grows if not full | Replenishes if losses occur</div>`;
+        if (entity.type === 'residence' || entity.type === 'barracks' || entity.type === 'armory') {
+          const productionCap = getProductionCap();
+          const register = getBuildingProductionRegister(entity);
+
+          if (entity.type === 'residence') {
+            const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === entity.id).length;
+            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/${productionCap} | Grows if not full | Replenishes if losses occur</div>`;
+          } else {
+            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>PRODUCTION:</strong> ${register.length}/${productionCap} | Register fills permanently</div>`;
+          }
         }
 
         detailsEl.innerHTML = `

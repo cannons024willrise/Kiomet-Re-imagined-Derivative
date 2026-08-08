@@ -484,10 +484,11 @@
       // Handle nested config updates
       if (key === 'TILE_SIZE') {
         GAME_CONFIG.TILE_SIZE = numValue;
-        const TILE_SIZE = numValue;
+        TILE_SIZE = numValue;
       } else if (key === 'TICK_RATE') {
         GAME_CONFIG.TICK_RATE = numValue;
-        const TICK_RATE = numValue;
+        TICK_RATE = numValue;
+        restartEconomyTimer();
       } else if (key.startsWith('BUILDING_COSTS_')) {
         const building = key.replace('BUILDING_COSTS_', '');
         GAME_CONFIG.BUILDING_COSTS[building] = numValue;
@@ -512,6 +513,8 @@
         GAME_CONFIG.CIVILIAN_GROWTH_TICKS = numValue;
       } else if (key === 'MAX_CIVILIANS_PER_RESIDENCE') {
         GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE = numValue;
+        syncResidenceCapacities();
+        refreshDerivedState();
       } else if (key === 'STARTING_RESOURCES') {
         GAME_CONFIG.STARTING_RESOURCES = numValue;
       } else if (key === 'STARTING_CIVILIANS') {
@@ -631,8 +634,8 @@
     };
     
     // Convenience constants (derived from config)
-    const TILE_SIZE = GAME_CONFIG.TILE_SIZE;
-    const TICK_RATE = GAME_CONFIG.TICK_RATE;
+    let TILE_SIZE = GAME_CONFIG.TILE_SIZE;
+    let TICK_RATE = GAME_CONFIG.TICK_RATE;
 
     const ASSETS = {
       tank: "tank.webp",
@@ -645,6 +648,14 @@
       radar: "radar.webp",
       resource: "resources.webp"
     };
+
+    let economyTickTimer = null;
+    function restartEconomyTimer() {
+      if (economyTickTimer !== null) {
+        clearInterval(economyTickTimer);
+      }
+      economyTickTimer = setInterval(processEconomyTick, TICK_RATE);
+    }
 
     // Dynamic building info that reads from GAME_CONFIG
     function getBuildingInfo(type) {
@@ -659,7 +670,7 @@
         residence: {
           title: "Residence",
           desc: "Increases civilian capacity, keeps a production register, and spawns civilians until the register is full.",
-          stats: `Cost: ${cost}g | Housing Cap: +${stats.capacity} Civilians | Growth: 1 per ${civGrowthTicks} tick(s) | Garrison: ${stats.capacity} Units`
+          stats: `Cost: ${cost}g | Housing Cap: +${maxCap} Civilians | Growth: 1 per ${civGrowthTicks} tick(s) | Garrison: ${maxCap} Units`
         },
         barracks: {
           title: "Barracks",
@@ -854,9 +865,21 @@
       visibleTiles: new Set()    // Tiles currently visible
     };
 
+    function syncResidenceCapacities() {
+      const maxPerResidence = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10;
+      state.buildings.forEach(b => {
+        if (b.type === 'residence') {
+          b.capacity = maxPerResidence;
+          b.capBonus = maxPerResidence;
+        }
+      });
+    }
+
     function refreshDerivedState() {
+      syncResidenceCapacities();
       const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
-      state.civilianCap = numResidences * 10;
+      const maxPerResidence = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10;
+      state.civilianCap = numResidences * maxPerResidence;
       state.civilians = state.units.filter(u => u.type === 'civilian').length;
       updateFogOfWar();
     }
@@ -1386,7 +1409,7 @@
     // ==========================================
     // 5. ECONOMY & TIME TICK
     // ==========================================
-    setInterval(processEconomyTick, TICK_RATE);
+    restartEconomyTimer();
 
     // ==========================================
     // 6. INPUT HANDLING & SELECTION
@@ -2314,7 +2337,7 @@
             const recentIds = register.slice(-6).map(entry => `#${entry.civilianNumber ?? entry.civilianId}`).join(', ') || 'None';
             residenceNote = `
               <div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;">
-                <strong>CAPACITY:</strong> ${civiliansInRes}/10 | Produced: ${register.length}/10 | Production stops when register is full
+                <strong>CAPACITY:</strong> ${civiliansInRes}/${GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10} | Produced: ${register.length}/${GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10} | Production stops when register is full
               </div>
               <div style="margin-top: 4px; font-size: 10px; color: #9a9f8e;">
                 <strong>REGISTER:</strong> ${recentIds}
@@ -2405,7 +2428,7 @@
         let residenceNote = '';
         if (entity.type === 'residence') {
           const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === entity.id).length;
-          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows if not full | Replenishes if losses occur</div>`;
+          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/${GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10} | Grows if not full | Replenishes if losses occur</div>`;
         }
 
         detailsEl.innerHTML = `

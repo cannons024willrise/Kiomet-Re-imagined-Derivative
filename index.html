@@ -326,7 +326,7 @@
       <div class="res-item">
         <img id="icon-civ" alt="Civilians" />
         <span>Civilians:</span>
-        <span id="ui-civilians" class="res-value">0 / 0</span>
+        <span id="ui-civilians" class="res-value">15 / 20</span>
         <span style="font-size: 11px; color: #5f6459;">(<span id="ui-miners">0</span> Mining)</span>
       </div>
       <div class="res-item">
@@ -357,76 +357,230 @@
 
       <!-- Quick Build Toolbar -->
       <div id="build-menu" class="hud-panel">
-        <button onclick="setBuildMode('residence')"><img class="btn-icon-residence" /> Residence <span class="shortcut-tag" id="residence-cost-label"></span></button>
-        <button onclick="setBuildMode('barracks')"><img class="btn-icon-barracks" /> Barracks <span class="shortcut-tag" id="barracks-cost-label"></span></button>
-        <button onclick="setBuildMode('armory')"><img class="btn-icon-armory" /> Armory <span class="shortcut-tag" id="armory-cost-label"></span></button>
-        <button onclick="setBuildMode('radar')"><img class="btn-icon-radar" /> Radar <span class="shortcut-tag" id="radar-cost-label"></span></button>
+        <button onclick="setBuildMode('residence')"><img class="btn-icon-residence" /> Residence <span class="shortcut-tag">(100g)</span></button>
+        <button onclick="setBuildMode('barracks')"><img class="btn-icon-barracks" /> Barracks <span class="shortcut-tag">(200g)</span></button>
+        <button onclick="setBuildMode('armory')"><img class="btn-icon-armory" /> Armory <span class="shortcut-tag">(500g)</span></button>
+        <button onclick="setBuildMode('radar')"><img class="btn-icon-radar" /> Radar <span class="shortcut-tag">(250g)</span></button>
+        <button onclick="openSettingsPanel()" style="margin-left: auto; background: rgba(217, 164, 65, 0.2);">⚙ Settings</button>
       </div>
     </div>
   </div>
 
-  <!-- HTML Sci-Fi Modal Dialog -->
-  <dialog id="game-modal">
-    <div class="dialog-title" id="modal-title">System Message</div>
-    <div class="dialog-body" id="modal-body">Message details...</div>
-    <div class="dialog-actions" id="modal-actions">
-      <button onclick="closeDialog()">OK</button>
+  <!-- Settings Panel Modal -->
+  <dialog id="settings-modal" style="width: 90%; max-width: 600px; max-height: 90vh;">
+    <div class="dialog-title">GAME CONFIG SETTINGS</div>
+    <div id="settings-content" class="dialog-body" style="overflow-y: auto; max-height: 70vh;">
+      <!-- Settings will be populated by JavaScript -->
+    </div>
+    <div class="dialog-actions">
+      <button onclick="resetGameConfig()">Reset to Defaults</button>
+      <button onclick="closeSettingsPanel()">Close</button>
     </div>
   </dialog>
 
   <script>
     // ==========================================
-    // 1. CONFIGURATION & ASSETS
+    // 0. SETTINGS PANEL FUNCTIONS
     // ==========================================
-    const TILE_SIZE = 64; // Pixels per grid square
-    const GAME_VALUES = {
-      economy: {
-        tickRateMs: 1000,
-        minerGoldPerMinute: 2,
-        civilianGrowthSeconds: 5,
-        catchUpCapHours: 12
+    function openSettingsPanel() {
+      const modal = document.getElementById('settings-modal');
+      const content = document.getElementById('settings-content');
+      
+      let html = '<div style="display: grid; gap: 16px;">';
+      
+      // UI & Display Section
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">⚙ UI & Display</div>';
+      html += createConfigInput('TILE_SIZE', GAME_CONFIG.TILE_SIZE, 'Tile Size (pixels)', 16, 128);
+      html += createConfigInput('TICK_RATE', GAME_CONFIG.TICK_RATE, 'Tick Rate (ms)', 100, 5000);
+      html += '</div>';
+      
+      // Building Costs
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">🏢 Building Costs</div>';
+      html += createConfigInput('BUILDING_COSTS_residence', GAME_CONFIG.BUILDING_COSTS.residence, 'Residence Cost', 0, 500);
+      html += createConfigInput('BUILDING_COSTS_barracks', GAME_CONFIG.BUILDING_COSTS.barracks, 'Barracks Cost', 0, 500);
+      html += createConfigInput('BUILDING_COSTS_armory', GAME_CONFIG.BUILDING_COSTS.armory, 'Armory Cost', 0, 1000);
+      html += createConfigInput('BUILDING_COSTS_radar', GAME_CONFIG.BUILDING_COSTS.radar, 'Radar Cost', 0, 500);
+      html += '</div>';
+      
+      // Unit Costs
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">⚔️ Unit Costs</div>';
+      html += createConfigInput('UNIT_COSTS_soldier', GAME_CONFIG.UNIT_COSTS.soldier, 'Soldier Cost', 0, 500);
+      html += createConfigInput('UNIT_COSTS_tank', GAME_CONFIG.UNIT_COSTS.tank, 'Tank Cost', 0, 1000);
+      html += '</div>';
+      
+      // Unit Stats
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">🛡️ Unit Stats (Soldier)</div>';
+      html += createConfigInput('UNIT_STATS_soldier_hp', GAME_CONFIG.UNIT_STATS.soldier.hp, 'Soldier HP', 1, 20);
+      html += createConfigInput('UNIT_STATS_soldier_speed', (GAME_CONFIG.UNIT_STATS.soldier.speed * 1000).toFixed(0), 'Soldier Speed (÷1000)', 1, 100);
+      html += createConfigInput('UNIT_STATS_soldier_meleeDmg', GAME_CONFIG.UNIT_STATS.soldier.meleeDmg, 'Soldier Melee Damage', 1, 20);
+      html += '</div>';
+      
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">🛡️ Unit Stats (Tank)</div>';
+      html += createConfigInput('UNIT_STATS_tank_hp', GAME_CONFIG.UNIT_STATS.tank.hp, 'Tank HP', 1, 50);
+      html += createConfigInput('UNIT_STATS_tank_speed', (GAME_CONFIG.UNIT_STATS.tank.speed * 1000).toFixed(0), 'Tank Speed (÷1000)', 1, 100);
+      html += createConfigInput('UNIT_STATS_tank_meleeDmg', GAME_CONFIG.UNIT_STATS.tank.meleeDmg, 'Tank Melee Damage', 1, 30);
+      html += createConfigInput('UNIT_STATS_tank_cannonDmg', GAME_CONFIG.UNIT_STATS.tank.cannonDmg, 'Tank Cannon Damage', 1, 30);
+      html += '</div>';
+      
+      // Economy
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">💰 Economy & Production</div>';
+      html += createConfigInput('CIVILIAN_GROWTH_TICKS', GAME_CONFIG.CIVILIAN_GROWTH_TICKS, 'Civilian Growth Ticks', 1, 30);
+      html += createConfigInput('MAX_CIVILIANS_PER_RESIDENCE', GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE, 'Max Civs per Residence', 1, 30);
+      html += createConfigInput('STARTING_RESOURCES', GAME_CONFIG.STARTING_RESOURCES, 'Starting Resources', 0, 5000);
+      html += createConfigInput('STARTING_CIVILIANS', GAME_CONFIG.STARTING_CIVILIANS, 'Starting Civilians', 1, 100);
+      html += '</div>';
+      
+      html += '</div>';
+      content.innerHTML = html;
+      modal.showModal();
+    }
+    
+    function createConfigInput(key, value, label, min, max) {
+      const type = typeof value === 'number' ? 'number' : 'text';
+      const step = key.includes('Speed') ? '0.001' : '1';
+      return `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px;">
+          <label style="flex: 1; color: #9a9f8e;">${label}:</label>
+          <input type="number" id="cfg-${key}" value="${value}" min="${min}" max="${max}" step="${step}" 
+                 style="width: 80px; padding: 4px; background: rgba(217, 164, 65, 0.1); border: 1px solid #d9a441; color: #d9a441;"
+                 onchange="applyConfigChange('${key}', this.value)">
+        </div>
+      `;
+    }
+    
+    function applyConfigChange(key, value) {
+      const numValue = parseFloat(value);
+      
+      // Handle nested config updates
+      if (key === 'TILE_SIZE') {
+        GAME_CONFIG.TILE_SIZE = numValue;
+        const TILE_SIZE = numValue;
+      } else if (key === 'TICK_RATE') {
+        GAME_CONFIG.TICK_RATE = numValue;
+        const TICK_RATE = numValue;
+      } else if (key.startsWith('BUILDING_COSTS_')) {
+        const building = key.replace('BUILDING_COSTS_', '');
+        GAME_CONFIG.BUILDING_COSTS[building] = numValue;
+      } else if (key.startsWith('UNIT_COSTS_')) {
+        const unit = key.replace('UNIT_COSTS_', '');
+        GAME_CONFIG.UNIT_COSTS[unit] = numValue;
+      } else if (key.startsWith('UNIT_STATS_soldier_')) {
+        const stat = key.replace('UNIT_STATS_soldier_', '');
+        if (stat === 'speed') {
+          GAME_CONFIG.UNIT_STATS.soldier.speed = numValue / 1000;
+        } else {
+          GAME_CONFIG.UNIT_STATS.soldier[stat] = numValue;
+        }
+      } else if (key.startsWith('UNIT_STATS_tank_')) {
+        const stat = key.replace('UNIT_STATS_tank_', '');
+        if (stat === 'speed') {
+          GAME_CONFIG.UNIT_STATS.tank.speed = numValue / 1000;
+        } else {
+          GAME_CONFIG.UNIT_STATS.tank[stat] = numValue;
+        }
+      } else if (key === 'CIVILIAN_GROWTH_TICKS') {
+        GAME_CONFIG.CIVILIAN_GROWTH_TICKS = numValue;
+      } else if (key === 'MAX_CIVILIANS_PER_RESIDENCE') {
+        GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE = numValue;
+      } else if (key === 'STARTING_RESOURCES') {
+        GAME_CONFIG.STARTING_RESOURCES = numValue;
+      } else if (key === 'STARTING_CIVILIANS') {
+        GAME_CONFIG.STARTING_CIVILIANS = numValue;
+      }
+      
+      updateUI();
+      updateBuildMenuDisplay();
+      console.log(`Updated ${key} to ${value}`);
+    }
+    
+    function resetGameConfig() {
+      if (confirm('Reset all settings to defaults? This will reload the game.')) {
+        location.reload();
+      }
+    }
+    
+    function closeSettingsPanel() {
+      document.getElementById('settings-modal').close();
+    }
+
+    // ==========================================
+    // 1. GAME CONFIGURATION - EASILY ADJUSTABLE
+    // ==========================================
+    const GAME_CONFIG = {
+      // UI & Display
+      TILE_SIZE: 64,           // Pixels per grid square
+      TICK_RATE: 1000,         // Economy tick interval (ms)
+      
+      // BUILDINGS
+      BUILDING_COSTS: {
+        residence: 100,
+        barracks: 200,
+        armory: 500,
+        radar: 250,
+        mine: 0
       },
-      buildings: {
-        residence: {
-          cost: 35,
-          housingCap: 10,
-          garrison: 10,
-          growthLabel: '1 civ / 5 sec'
+      
+      BUILDING_STATS: {
+        residence: { capacity: 10, vision: 0 },
+        barracks: { capacity: 10, vision: 0 },
+        armory: { capacity: 10, vision: 0 },
+        radar: { capacity: 10, vision: 4 },
+        mine: { capacity: 10, vision: 0 }
+      },
+      
+      // UNITS - Costs (resource + 1 civilian)
+      UNIT_COSTS: {
+        soldier: 50,
+        tank: 300,
+        civilian: 0  // No cost, auto-spawned
+      },
+      
+      // UNITS - Stats
+      UNIT_STATS: {
+        soldier: {
+          hp: 1,
+          maxHp: 1,
+          speed: 0.025,        // Tiles per tick frame
+          meleeDmg: 1,
+          cannonDmg: 0
         },
-        barracks: {
-          cost: 200,
-          soldierCost: 50,
-          garrison: 10
+        tank: {
+          hp: 10,
+          maxHp: 10,
+          speed: 0.015,        // Tiles per tick frame
+          meleeDmg: 10,
+          cannonDmg: 5
         },
-        armory: {
-          cost: 500,
-          tankCost: 300,
-          garrison: 10
-        },
-        radar: {
-          cost: 250,
-          visionRange: 4,
-          garrison: 10
-        },
-        mine: {
-          workerCap: 10
+        civilian: {
+          hp: 1,
+          maxHp: 1,
+          speed: 0.02,         // Tiles per tick frame
+          meleeDmg: 0,
+          cannonDmg: 0
         }
       },
-      units: {
-        civilian: { hp: 1, meleeDmg: 0, speed: 0.02 },
-        soldier: { hp: 1, meleeDmg: 1, speed: 0.025 },
-        tank: { hp: 10, meleeDmg: 10, speed: 0.015, cannonDmg: 5, cannonCooldownMs: 10000 }
-      },
-      ui: {
-        defaultTargetCapacity: 10
-      },
-      starting: {
-        civilians: 15,
-        residences: 2,
-        naturalMines: 7
-      }
+      
+      // ECONOMY & PRODUCTION
+      CIVILIAN_GROWTH_TICKS: 5,         // Ticks per new civilian spawn
+      MINING_RATE_PER_TICK: 1/60,      // Progress per miner per tick
+      MAX_CIVILIANS_PER_RESIDENCE: 10,  // Hard capacity limit
+      STARTING_RESOURCES: 0,
+      STARTING_CIVILIANS: 15,
+      STARTING_RESIDENCES: 2,
+      
+      // GAMEPLAY
+      INITIAL_CAMERA_ZOOM: 1.5
     };
-    const TICK_RATE = GAME_VALUES.economy.tickRateMs; // Economy tick interval (ms)
+    
+    // Convenience constants (derived from config)
+    const TILE_SIZE = GAME_CONFIG.TILE_SIZE;
+    const TICK_RATE = GAME_CONFIG.TICK_RATE;
 
     const ASSETS = {
       tank: "tank.webp",
@@ -440,33 +594,63 @@
       resource: "resources.webp"
     };
 
-    const BUILDING_INFO = {
-      residence: {
-        title: "Residence",
-        desc: "Increases civilian population capacity (+10 cap bonus) and passively spawns new civilians.",
-        stats: `Cost: ${GAME_VALUES.buildings.residence.cost}g | Housing Cap: +${GAME_VALUES.buildings.residence.housingCap} Civilians | Garrison: ${GAME_VALUES.buildings.residence.garrison} Units | Growth: 1 civ / ${GAME_VALUES.economy.civilianGrowthSeconds} sec`
-      },
-      barracks: {
-        title: "Barracks",
-        desc: "Military recruitment hub. Converts available civilians into Soldiers.",
-        stats: `Cost: ${GAME_VALUES.buildings.barracks.cost}g | Train: ${GAME_VALUES.buildings.barracks.soldierCost}g + 1 Civilian | Garrison: ${GAME_VALUES.buildings.barracks.garrison} Units`
-      },
-      armory: {
-        title: "Armory",
-        desc: "Heavy weapons factory. Converts available civilians into armored Tanks.",
-        stats: `Cost: ${GAME_VALUES.buildings.armory.cost}g | Train: ${GAME_VALUES.buildings.armory.tankCost}g + 1 Civilian | Garrison: ${GAME_VALUES.buildings.armory.garrison} Units`
-      },
-      radar: {
-        title: "Radar Station",
-        desc: "Tactical reconnaissance installation providing strategic vision over adjacent tiles.",
-        stats: `Cost: ${GAME_VALUES.buildings.radar.cost}g | Vision Range: ${GAME_VALUES.buildings.radar.visionRange} Tiles | Garrison: ${GAME_VALUES.buildings.radar.garrison} Units`
-      },
-      mine: {
-        title: "Resource Mine",
-        desc: "Resource extraction node. Generates gold when civilians mine or garrison inside.",
-        stats: `Yield: ~${GAME_VALUES.economy.minerGoldPerMinute}g/min per active miner | Worker Cap: ${GAME_VALUES.buildings.mine.workerCap} Civilians`
-      }
-    };
+    // Dynamic building info that reads from GAME_CONFIG
+    function getBuildingInfo(type) {
+      const cost = GAME_CONFIG.BUILDING_COSTS[type] || 0;
+      const stats = GAME_CONFIG.BUILDING_STATS[type] || { capacity: 10, vision: 0 };
+      const soldierCost = GAME_CONFIG.UNIT_COSTS.soldier || 50;
+      const tankCost = GAME_CONFIG.UNIT_COSTS.tank || 300;
+      const civGrowthTicks = GAME_CONFIG.CIVILIAN_GROWTH_TICKS || 5;
+      const maxCap = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE || 10;
+      
+      const baseInfo = {
+        residence: {
+          title: "Residence",
+          desc: "Increases civilian population capacity and passively spawns new civilians.",
+          stats: `Cost: ${cost}g | Housing Cap: +${stats.capacity} Civilians | Growth: 1 per ${civGrowthTicks} tick(s) | Garrison: ${stats.capacity} Units`
+        },
+        barracks: {
+          title: "Barracks",
+          desc: "Military recruitment hub. Converts available civilians into Soldiers.",
+          stats: `Cost: ${cost}g | Train: ${soldierCost}g + 1 Civilian | Garrison: ${stats.capacity} Units`
+        },
+        armory: {
+          title: "Armory",
+          desc: "Heavy weapons factory. Converts available civilians into armored Tanks.",
+          stats: `Cost: ${cost}g | Train: ${tankCost}g + 1 Civilian | Garrison: ${stats.capacity} Units`
+        },
+        radar: {
+          title: "Radar Station",
+          desc: "Tactical reconnaissance installation providing strategic vision over adjacent tiles.",
+          stats: `Cost: ${cost}g | Vision Range: ${stats.vision} Tiles | Garrison: ${stats.capacity} Units`
+        },
+        mine: {
+          title: "Resource Mine",
+          desc: "Resource extraction node. Generates gold when civilians mine or garrison inside.",
+          stats: `Yield: ~${Math.round(60 / (1 / GAME_CONFIG.MINING_RATE_PER_TICK))}g/min per miner | Worker Cap: ${stats.capacity} Civilians`
+        }
+      };
+      
+      return baseInfo[type] || baseInfo.residence;
+    }
+
+    // Dynamic unit info that reads from GAME_CONFIG
+    function getUnitInfo(type) {
+      const stats = GAME_CONFIG.UNIT_STATS[type] || GAME_CONFIG.UNIT_STATS.soldier;
+      const cost = GAME_CONFIG.UNIT_COSTS[type] || 0;
+      const costText = cost > 0 ? `${cost}g + 1 Civ` : 'Auto-spawn';
+      
+      return {
+        title: type.toUpperCase(),
+        cost: costText,
+        hp: stats.hp,
+        maxHp: stats.maxHp,
+        speed: stats.speed,
+        meleeDmg: stats.meleeDmg,
+        cannonDmg: stats.cannonDmg,
+        stats: `HP: ${stats.hp} | Speed: ${(stats.speed * 100).toFixed(1)} | Melee: ${stats.meleeDmg}${stats.cannonDmg > 0 ? ` | Cannon: ${stats.cannonDmg}` : ''}`
+      };
+    }
 
     const IMAGES = {};
 
@@ -496,12 +680,6 @@
       document.querySelectorAll('.btn-icon-barracks').forEach(el => el.src = ASSETS.barracks);
       document.querySelectorAll('.btn-icon-armory').forEach(el => el.src = ASSETS.armory);
       document.querySelectorAll('.btn-icon-radar').forEach(el => el.src = ASSETS.radar);
-
-      const setLabel = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
-      setLabel('residence-cost-label', `(${GAME_VALUES.buildings.residence.cost}g)`);
-      setLabel('barracks-cost-label', `(${GAME_VALUES.buildings.barracks.cost}g)`);
-      setLabel('armory-cost-label', `(${GAME_VALUES.buildings.armory.cost}g)`);
-      setLabel('radar-cost-label', `(${GAME_VALUES.buildings.radar.cost}g)`);
     }
 
     loadAssets();
@@ -557,6 +735,23 @@
       dialog.showModal();
     }
 
+    function updateBuildMenuDisplay() {
+      const buildMenu = document.getElementById('build-menu');
+      if (!buildMenu) return;
+      
+      const buttons = buildMenu.querySelectorAll('button:not(:last-child)');
+      const buildings = ['residence', 'barracks', 'armory', 'radar'];
+      
+      buttons.forEach((btn, idx) => {
+        const buildType = buildings[idx];
+        const cost = GAME_CONFIG.BUILDING_COSTS[buildType] || 0;
+        const tag = btn.querySelector('.shortcut-tag');
+        if (tag) {
+          tag.innerText = `(${cost}g)`;
+        }
+      });
+    }
+    
     function closeDialog() {
       document.getElementById('game-modal').close();
     }
@@ -565,13 +760,13 @@
     // 2. STATE MANAGEMENT
     // ==========================================
     const SAVE_KEY = 'grid-rts-engine-save-v1';
-    const CATCH_UP_CAP_MS = 1000 * 60 * 60 * GAME_VALUES.economy.catchUpCapHours; // Keep recovery work sane if the tab was gone for ages.
+    const CATCH_UP_CAP_MS = 1000 * 60 * 60 * 12; // Keep recovery work sane if the tab was gone for ages.
     let idCounter = 1;
     let civilianNumberCounter = 0; // Proper civilian numbering system
 
     const state = {
-      resources: 0,
-      civilians: GAME_VALUES.starting.civilians,
+      resources: GAME_CONFIG.STARTING_RESOURCES,
+      civilians: GAME_CONFIG.STARTING_CIVILIANS,
       civilianCap: 0, // Capped strictly based on total Residence housing capacity
       civilianGrowthCounter: 0,
       civilianNumberCounter: 0, // Track next civilian number
@@ -605,7 +800,7 @@
 
     function refreshDerivedState() {
       const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
-      state.civilianCap = numResidences * GAME_VALUES.buildings.residence.housingCap;
+      state.civilianCap = numResidences * 10;
       state.civilians = state.units.filter(u => u.type === 'civilian').length;
     }
 
@@ -684,7 +879,7 @@
           b.assignedCivilians = activeMiners;
           
           // Add mining progress for this mine
-          const mineResourceRate = activeMiners * (GAME_VALUES.economy.minerGoldPerMinute / 60);
+          const mineResourceRate = activeMiners * GAME_CONFIG.MINING_RATE_PER_TICK;
           b.miningProgress += mineResourceRate;
           
           // When progress >= 1, harvest a resource and update global resources
@@ -703,15 +898,16 @@
       
       residences.forEach(res => {
         const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === res.id).length;
+        const maxPerResidence = GAME_CONFIG.MAX_CIVILIANS_PER_RESIDENCE;
         
         // Only grow if:
-        // 1. This residence has capacity (civs in it < housing cap, meaning it can hold more)
+        // 1. This residence has capacity (civs in it < max, meaning it can hold more)
         // 2. We haven't hit global cap
-        // If civs die, this residence can produce more to fill back up to the cap
-        if (civiliansInRes < GAME_VALUES.buildings.residence.housingCap && state.civilians < state.civilianCap) {
-          res.growthProgress += TICK_RATE / 1000;
+        // If civs die, this residence can produce more to fill back up
+        if (civiliansInRes < maxPerResidence && state.civilians < state.civilianCap) {
+          res.growthProgress++;
           
-          if (res.growthProgress >= GAME_VALUES.economy.civilianGrowthSeconds) {
+          if (res.growthProgress >= GAME_CONFIG.CIVILIAN_GROWTH_TICKS) {
             // Spawn a civilian into this residence
             const newCiv = createUnit('civilian', res.tileX, res.tileY, 'blue');
             newCiv.garrisonedBuildingId = res.id;
@@ -719,7 +915,7 @@
             res.growthProgress = 0;
             refreshDerivedState();
           }
-        } else if (civiliansInRes >= GAME_VALUES.buildings.residence.housingCap || state.civilians >= state.civilianCap) {
+        } else if (civiliansInRes >= maxPerResidence || state.civilians >= state.civilianCap) {
           // Halt growth if full or global cap hit
           res.growthProgress = 0;
         }
@@ -764,8 +960,8 @@
       const res2 = createBuilding('residence', 4, 2, 'blue');
       state.buildings.push(res1, res2);
 
-      // Start all initial Civilians housed directly inside the starting Residences
-      for (let i = 0; i < GAME_VALUES.starting.civilians; i++) {
+      // Start all 15 initial Civilians housed directly inside the starting Residences
+      for (let i = 0; i < 15; i++) {
         const targetRes = (i < 10) ? res1 : res2;
         const civ = createUnit('civilian', targetRes.tileX, targetRes.tileY, 'blue');
         civ.garrisonedBuildingId = targetRes.id;
@@ -773,7 +969,7 @@
       }
 
       // Procedurally / Naturally Generated Mines across the map
-      const numNaturalMines = GAME_VALUES.starting.naturalMines;
+      const numNaturalMines = 7;
       for (let i = 0; i < numNaturalMines; i++) {
         let rx, ry, attempts = 0;
         do {
@@ -803,8 +999,7 @@
     // Entity Factories
 
     function createUnit(type, x, y, faction = 'blue') {
-      const isTank = type === 'tank';
-      const isCivilian = type === 'civilian';
+      const stats = GAME_CONFIG.UNIT_STATS[type] || GAME_CONFIG.UNIT_STATS.soldier;
       const tileX = Math.floor(x);
       const tileY = Math.floor(y);
 
@@ -817,13 +1012,13 @@
         y: tileY,
         targetX: tileX,
         targetY: tileY,
-        hp: isTank ? GAME_VALUES.units.tank.hp : (isCivilian ? GAME_VALUES.units.civilian.hp : GAME_VALUES.units.soldier.hp),
-        maxHp: isTank ? GAME_VALUES.units.tank.hp : (isCivilian ? GAME_VALUES.units.civilian.hp : GAME_VALUES.units.soldier.hp),
-        speed: isTank ? GAME_VALUES.units.tank.speed : (isCivilian ? GAME_VALUES.units.civilian.speed : GAME_VALUES.units.soldier.speed), // Tiles per tick frame
-        meleeDmg: isTank ? GAME_VALUES.units.tank.meleeDmg : (isCivilian ? GAME_VALUES.units.civilian.meleeDmg : GAME_VALUES.units.soldier.meleeDmg),
+        hp: stats.hp,
+        maxHp: stats.maxHp,
+        speed: stats.speed,        // Tiles per tick frame
+        meleeDmg: stats.meleeDmg,
         // Tank Cannon Mechanics
-        cannonDmg: isTank ? GAME_VALUES.units.tank.cannonDmg : 0,
-        cannonCooldown: 0, // Tick counter
+        cannonDmg: stats.cannonDmg,
+        cannonCooldown: 0,         // Tick counter
         fireControl: 'aggressive', // 'aggressive' | 'ignore_infantry' | 'ignore_buildings' | 'prioritize_buildings' | 'hold_fire'
         selected: false,
         // Structure Entry & Mine Mechanics
@@ -834,7 +1029,7 @@
       };
 
       // Assign proper civilian numbering
-      if (isCivilian) {
+      if (type === 'civilian') {
         unit.civilianNumber = ++civilianNumberCounter;
       }
 
@@ -842,6 +1037,9 @@
     }
 
     function createBuilding(type, tileX, tileY, faction = 'blue') {
+      const cost = GAME_CONFIG.BUILDING_COSTS[type] || 0;
+      const stats = GAME_CONFIG.BUILDING_STATS[type] || { capacity: 10, vision: 0 };
+      
       const base = {
         id: idCounter++,
         entityType: 'building',
@@ -853,20 +1051,13 @@
         maxHp: 20,
         assignedCivilians: 0,
         trainingQueue: [],
-        capacity: 10, // Max capacity for garrisoning units in any structure
+        capacity: stats.capacity,
+        vision: stats.vision,
+        cost: cost,
+        capBonus: (type === 'residence') ? stats.capacity : 0,
         miningProgress: 0, // For mines: tracks fractional resource generation (0-1)
-        growthProgress: 0  // For residences: tracks civilian growth progress in seconds
+        growthProgress: 0  // For residences: tracks civilian growth progress (0-5)
       };
-
-      if (type === 'residence') { 
-        base.cost = GAME_VALUES.buildings.residence.cost; 
-        base.capBonus = GAME_VALUES.buildings.residence.housingCap; 
-        base.capacity = GAME_VALUES.buildings.residence.garrison;
-      }
-      if (type === 'barracks') { base.cost = GAME_VALUES.buildings.barracks.cost; base.capacity = GAME_VALUES.buildings.barracks.garrison; }
-      if (type === 'armory') { base.cost = GAME_VALUES.buildings.armory.cost; base.capacity = GAME_VALUES.buildings.armory.garrison; }
-      if (type === 'radar') { base.cost = GAME_VALUES.buildings.radar.cost; base.vision = GAME_VALUES.buildings.radar.visionRange; base.capacity = GAME_VALUES.buildings.radar.garrison; }
-      if (type === 'mine') { base.capacity = GAME_VALUES.buildings.mine.workerCap; }
 
       return base;
     }
@@ -966,7 +1157,7 @@
 
         if (unit.type === 'tank' && unit.fireControl !== 'hold_fire') {
           unit.cannonCooldown += deltaTime;
-          if (unit.cannonCooldown >= GAME_VALUES.units.tank.cannonCooldownMs) {
+          if (unit.cannonCooldown >= 10000) {
             const target = findTankTarget(unit);
             if (target) {
               target.hp -= unit.cannonDmg;
@@ -1236,12 +1427,7 @@
     }
 
     function placeBuilding(type, tileX, tileY) {
-      const costs = {
-        residence: GAME_VALUES.buildings.residence.cost,
-        barracks: GAME_VALUES.buildings.barracks.cost,
-        armory: GAME_VALUES.buildings.armory.cost,
-        radar: GAME_VALUES.buildings.radar.cost
-      };
+      const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
       const cost = costs[type];
 
       if (state.resources < cost) {
@@ -1258,7 +1444,7 @@
     }
 
     function trainUnit(building, unitType, count = 1, targetTile = null) {
-      const costPerUnit = unitType === 'soldier' ? GAME_VALUES.buildings.barracks.soldierCost : GAME_VALUES.buildings.armory.tankCost;
+      const costPerUnit = GAME_CONFIG.UNIT_COSTS[unitType] || 0;
       let trainedCount = 0;
 
       for (let i = 0; i < count; i++) {
@@ -1299,7 +1485,7 @@
     }
 
     function getStructureCapacity(building) {
-      return building.capacity || building.capBonus || GAME_VALUES.ui.defaultTargetCapacity;
+      return building.capacity || building.capBonus || 10;
     }
 
     function getTileOccupancy(tileX, tileY) {
@@ -1315,7 +1501,7 @@
       if (targetBuilding) {
         return getStructureCapacity(targetBuilding);
       }
-      return GAME_VALUES.ui.defaultTargetCapacity;
+      return 10;
     }
 
     // Unified Structure Garrison & Deployment Dialog System (Works for Any Structure)
@@ -1400,7 +1586,7 @@
     function deployUnitsFromStructure(building, count, targetTile) {
       const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === building.id);
       const targetBld = state.buildings.find(b => b.tileX === targetTile.x && b.tileY === targetTile.y);
-      const targetCapacity = targetBld ? getStructureCapacity(targetBld) : GAME_VALUES.ui.defaultTargetCapacity;
+      const targetCapacity = targetBld ? getStructureCapacity(targetBld) : 10;
       const targetOccupancy = targetBld
         ? state.units.filter(u => u.garrisonedBuildingId === targetBld.id).length
         : state.units.filter(u => !u.garrisonedBuildingId && Math.floor(u.x) === targetTile.x && Math.floor(u.y) === targetTile.y).length;
@@ -1435,25 +1621,26 @@
         return;
       }
 
+      const soldierCost = GAME_CONFIG.UNIT_COSTS.soldier || 50;
       const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
       const dialog = document.getElementById('game-modal');
       
       document.getElementById('modal-title').innerText = `Barracks #${barracks.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
       
       if (availableCivs === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Soldiers (Cost: 50g + 1 Civilian each).</p>`;
+        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Soldiers (Cost: ${soldierCost}g + 1 Civilian each).</p>`;
         const actionsEl = document.getElementById('modal-actions');
         actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
         dialog.showModal();
         return;
       }
 
-      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / 50));
+      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / soldierCost));
       const maxTrain = Math.max(1, maxAffordable);
 
       document.getElementById('modal-body').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Available Civilians: <strong style="color:#d9a441">${availableCivs}</strong> | Cost: <strong>50g + 1 Civ each</strong></p>
+          <p>Available Civilians: <strong style="color:#d9a441">${availableCivs}</strong> | Cost: <strong>${soldierCost}g + 1 Civ each</strong></p>
           <p style="font-size: 11px; color: #7a9d5c;">Rally Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
           <label style="font-size: 12px; color: #9a9f8e;">Select number of Soldiers to train & rally:</label>
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -1496,25 +1683,26 @@
         return;
       }
 
+      const tankCost = GAME_CONFIG.UNIT_COSTS.tank || 300;
       const availableCivs = state.units.filter(u => u.type === 'civilian' && u.assignedMineId == null).length;
       const dialog = document.getElementById('game-modal');
       
       document.getElementById('modal-title').innerText = `Armory #${armory.id} -> Rally (${state.targetTile.x}, ${state.targetTile.y})`;
       
       if (availableCivs === 0) {
-        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Tanks (Cost: 300g + 1 Civilian each).</p>`;
+        document.getElementById('modal-body').innerHTML = `<p>No available civilians to convert into Tanks (Cost: ${tankCost}g + 1 Civilian each).</p>`;
         const actionsEl = document.getElementById('modal-actions');
         actionsEl.innerHTML = '<button onclick="closeDialog()">Close</button>';
         dialog.showModal();
         return;
       }
 
-      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / 300));
+      const maxAffordable = Math.min(availableCivs, Math.floor(state.resources / tankCost));
       const maxTrain = Math.max(1, maxAffordable);
 
       document.getElementById('modal-body').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <p>Available Civilians: <strong style="color:#d9a441">${availableCivs}</strong> | Cost: <strong>300g + 1 Civ each</strong></p>
+          <p>Available Civilians: <strong style="color:#d9a441">${availableCivs}</strong> | Cost: <strong>${tankCost}g + 1 Civ each</strong></p>
           <p style="font-size: 11px; color: #7a9d5c;">Rally Target Tile: <strong>(${state.targetTile.x}, ${state.targetTile.y})</strong></p>
           <label style="font-size: 12px; color: #9a9f8e;">Select number of Tanks to train & rally:</label>
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -1639,14 +1827,14 @@
         }
 
         if (b.type === 'residence' && b.growthProgress > 0) {
-          // Cyan progress bar for civilian growth (seconds, where 5 = ready to spawn)
+          // Cyan progress bar for civilian growth (0-5, where 5 = ready to spawn)
           const barHeight = 3;
           ctx.fillStyle = 'rgba(34, 211, 238, 0.4)'; // Cyan background
           ctx.fillRect(px, py + TILE_SIZE - barHeight, TILE_SIZE, barHeight);
           
           // Brighter cyan for actual progress
           ctx.fillStyle = 'rgb(34, 211, 238)';
-          const progressWidth = TILE_SIZE * Math.min(b.growthProgress / GAME_VALUES.economy.civilianGrowthSeconds, 1);
+          const progressWidth = TILE_SIZE * Math.min(b.growthProgress / 5, 1); // 0-5 normalized to 0-1
           ctx.fillRect(px, py + TILE_SIZE - barHeight, progressWidth, barHeight);
         }
 
@@ -1770,12 +1958,7 @@
       const hy = state.hoveredTile.y * TILE_SIZE + state.camera.y;
 
       if (state.buildMode) {
-        const costs = {
-        residence: GAME_VALUES.buildings.residence.cost,
-        barracks: GAME_VALUES.buildings.barracks.cost,
-        armory: GAME_VALUES.buildings.armory.cost,
-        radar: GAME_VALUES.buildings.radar.cost
-      };
+        const costs = { residence: 100, barracks: 200, armory: 500, radar: 250 };
         const cost = costs[state.buildMode] || 0;
         const occupied = state.buildings.some(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
         const affordable = state.resources >= cost;
@@ -1818,6 +2001,7 @@
     // 9. UI UPDATER (WEB PAGE HUD & INSPECTOR PANEL)
     // ==========================================
     function updateUI() {
+      updateBuildMenuDisplay();
       document.getElementById('ui-resources').innerText = Math.floor(state.resources);
       const totalCivs = state.units.filter(u => u.type === 'civilian').length;
       document.getElementById('ui-civilians').innerText = `${totalCivs} / ${state.civilianCap}`;
@@ -1850,9 +2034,9 @@
         // Hover Preview Info Card inside the Web Interface
         const hoveredBld = state.buildings.find(b => b.tileX === state.hoveredTile.x && b.tileY === state.hoveredTile.y);
         if (hoveredBld) {
-          const info = BUILDING_INFO[hoveredBld.type] || { title: hoveredBld.type, desc: '', stats: '' };
+          const info = getBuildingInfo(hoveredBld.type);
           const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === hoveredBld.id);
-          const maxCap = hoveredBld.capacity || hoveredBld.capBonus || GAME_VALUES.ui.defaultTargetCapacity;
+          const maxCap = hoveredBld.capacity || hoveredBld.capBonus || 10;
 
           let unitBreakdown = "";
           if (garrisonedUnits.length === 0) {
@@ -1865,11 +2049,11 @@
               .join(', ');
           }
 
-          // Special note for residences about the configurable civilian capacity
+          // Special note for residences about the 10 civilian capacity
           let residenceNote = '';
           if (hoveredBld.type === 'residence') {
             const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === hoveredBld.id).length;
-            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/${GAME_VALUES.buildings.residence.housingCap} | Grows every ${GAME_VALUES.economy.civilianGrowthSeconds}s if not full | Replenishes if losses occur</div>`;
+            residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows if not full | Replenishes if losses occur</div>`;
           }
 
           titleEl.innerText = `Hover Preview: ${info.title} #${hoveredBld.id}`;
@@ -1934,9 +2118,9 @@
           });
         }
       } else if (entity.entityType === 'building') {
-        const info = BUILDING_INFO[entity.type] || { title: entity.type, desc: '', stats: '' };
+        const info = getBuildingInfo(entity.type);
         const garrisonedUnits = state.units.filter(u => u.garrisonedBuildingId === entity.id);
-        const maxCap = entity.capacity || entity.capBonus || GAME_VALUES.ui.defaultTargetCapacity;
+        const maxCap = entity.capacity || entity.capBonus || 10;
 
         let unitBreakdown = "";
         if (garrisonedUnits.length === 0) {
@@ -1951,11 +2135,11 @@
 
         titleEl.innerText = `${info.title.toUpperCase()} (ID: ${entity.id})`;
 
-        // Special note for residences about the configurable civilian capacity
+        // Special note for residences about the 10 civilian capacity
         let residenceNote = '';
         if (entity.type === 'residence') {
           const civiliansInRes = state.units.filter(u => u.type === 'civilian' && u.garrisonedBuildingId === entity.id).length;
-          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/${GAME_VALUES.buildings.residence.housingCap} | Grows every ${GAME_VALUES.economy.civilianGrowthSeconds}s if not full | Replenishes if losses occur</div>`;
+          residenceNote = `<div style="margin-top: 6px; padding: 4px; background: rgba(34, 211, 238, 0.1); border-left: 2px solid #22d3ee; font-size: 10px; color: #22d3ee;"><strong>CAPACITY:</strong> ${civiliansInRes}/10 | Grows if not full | Replenishes if losses occur</div>`;
         }
 
         detailsEl.innerHTML = `

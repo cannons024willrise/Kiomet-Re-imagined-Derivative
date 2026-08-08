@@ -366,6 +366,15 @@
     </div>
   </div>
 
+  <!-- HTML Sci-Fi Modal Dialog (Main Game Modal) -->
+  <dialog id="game-modal">
+    <div class="dialog-title" id="modal-title">System Message</div>
+    <div class="dialog-body" id="modal-body">Message details...</div>
+    <div class="dialog-actions" id="modal-actions">
+      <button onclick="closeDialog()">OK</button>
+    </div>
+  </dialog>
+
   <!-- Settings Panel Modal -->
   <dialog id="settings-modal" style="width: 90%; max-width: 600px; max-height: 90vh;">
     <div class="dialog-title">GAME CONFIG SETTINGS</div>
@@ -436,6 +445,21 @@
       html += createConfigInput('STARTING_CIVILIANS', GAME_CONFIG.STARTING_CIVILIANS, 'Starting Civilians', 1, 100);
       html += '</div>';
       
+      // Fog of War
+      html += '<div style="border: 1px solid rgba(217, 164, 65, 0.3); padding: 12px; border-radius: 4px;">';
+      html += '<div style="color: #d9a441; font-weight: bold; margin-bottom: 8px;">👁️ Fog of War</div>';
+      html += `<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 8px;">
+        <label style="flex: 1; color: #9a9f8e;">Fog of War Enabled:</label>
+        <input type="checkbox" id="cfg-FOG_OF_WAR_ENABLED" ${GAME_CONFIG.FOG_OF_WAR_ENABLED ? 'checked' : ''} onchange="applyConfigChange('FOG_OF_WAR_ENABLED', this.checked)">
+      </div>`;
+      html += '<div style="font-size: 10px; color: #5f6459; margin-bottom: 8px;">Vision Ranges (tiles):</div>';
+      html += createConfigInput('UNIT_VISION_RANGE_civilian', GAME_CONFIG.UNIT_VISION_RANGE.civilian, 'Civilian Vision', 1, 10);
+      html += createConfigInput('UNIT_VISION_RANGE_soldier', GAME_CONFIG.UNIT_VISION_RANGE.soldier, 'Soldier Vision', 1, 10);
+      html += createConfigInput('UNIT_VISION_RANGE_tank', GAME_CONFIG.UNIT_VISION_RANGE.tank, 'Tank Vision', 1, 10);
+      html += createConfigInput('BUILDING_VISION_RANGE_radar', GAME_CONFIG.BUILDING_VISION_RANGE.radar, 'Radar Vision', 1, 15);
+      html += createConfigInput('BUILDING_VISION_RANGE_residence', GAME_CONFIG.BUILDING_VISION_RANGE.residence, 'Residence Vision', 1, 10);
+      html += '</div>';
+      
       html += '</div>';
       content.innerHTML = html;
       modal.showModal();
@@ -492,6 +516,17 @@
         GAME_CONFIG.STARTING_RESOURCES = numValue;
       } else if (key === 'STARTING_CIVILIANS') {
         GAME_CONFIG.STARTING_CIVILIANS = numValue;
+      } else if (key === 'FOG_OF_WAR_ENABLED') {
+        GAME_CONFIG.FOG_OF_WAR_ENABLED = value === 'true' || value === true;
+        refreshDerivedState();
+      } else if (key.startsWith('UNIT_VISION_RANGE_')) {
+        const unit = key.replace('UNIT_VISION_RANGE_', '');
+        GAME_CONFIG.UNIT_VISION_RANGE[unit] = numValue;
+        refreshDerivedState();
+      } else if (key.startsWith('BUILDING_VISION_RANGE_')) {
+        const building = key.replace('BUILDING_VISION_RANGE_', '');
+        GAME_CONFIG.BUILDING_VISION_RANGE[building] = numValue;
+        refreshDerivedState();
       }
       
       updateUI();
@@ -575,7 +610,24 @@
       STARTING_RESIDENCES: 2,
       
       // GAMEPLAY
-      INITIAL_CAMERA_ZOOM: 1.5
+      INITIAL_CAMERA_ZOOM: 1.5,
+      
+      // FOG OF WAR
+      FOG_OF_WAR_ENABLED: true,
+      UNIT_VISION_RANGE: {
+        civilian: 2,
+        soldier: 3,
+        tank: 4
+      },
+      BUILDING_VISION_RANGE: {
+        residence: 2,
+        barracks: 2,
+        armory: 2,
+        radar: 6,   // Radar has superior vision
+        mine: 1
+      },
+      FOG_SHROUD_COLOR: 'rgba(11, 13, 10, 0.7)',  // Dark fog overlay
+      EXPLORED_COLOR: 'rgba(60, 70, 60, 0.3)'     // Slightly visible explored areas
     };
     
     // Convenience constants (derived from config)
@@ -795,13 +847,77 @@
       },
 
       // Faction
-      playerFaction: 'blue'
+      playerFaction: 'blue',
+      
+      // Fog of War
+      exploredTiles: new Set(),  // Tiles ever seen
+      visibleTiles: new Set()    // Tiles currently visible
     };
 
     function refreshDerivedState() {
       const numResidences = state.buildings.filter(b => b.type === 'residence' && b.faction === 'blue').length;
       state.civilianCap = numResidences * 10;
       state.civilians = state.units.filter(u => u.type === 'civilian').length;
+      updateFogOfWar();
+    }
+
+    function updateFogOfWar() {
+      if (!GAME_CONFIG.FOG_OF_WAR_ENABLED) {
+        // No fog: everything is visible
+        state.visibleTiles.clear();
+        state.exploredTiles.clear();
+        return;
+      }
+
+      const newVisibleTiles = new Set();
+
+      // Calculate vision from all player units
+      state.units.forEach(u => {
+        if (u.faction !== 'blue') return;
+        const visionRange = GAME_CONFIG.UNIT_VISION_RANGE[u.type] || 2;
+        const tx = Math.floor(u.x);
+        const ty = Math.floor(u.y);
+        
+        // Add all tiles within vision range
+        for (let dx = -visionRange; dx <= visionRange; dx++) {
+          for (let dy = -visionRange; dy <= visionRange; dy++) {
+            const key = `${tx + dx},${ty + dy}`;
+            newVisibleTiles.add(key);
+            state.exploredTiles.add(key);
+          }
+        }
+      });
+
+      // Calculate vision from all player buildings
+      state.buildings.forEach(b => {
+        if (b.faction !== 'blue') return;
+        const visionRange = GAME_CONFIG.BUILDING_VISION_RANGE[b.type] || 1;
+        const tx = b.tileX;
+        const ty = b.tileY;
+        
+        // Add all tiles within vision range
+        for (let dx = -visionRange; dx <= visionRange; dx++) {
+          for (let dy = -visionRange; dy <= visionRange; dy++) {
+            const key = `${tx + dx},${ty + dy}`;
+            newVisibleTiles.add(key);
+            state.exploredTiles.add(key);
+          }
+        }
+      });
+
+      state.visibleTiles = newVisibleTiles;
+    }
+
+    function isTileVisible(x, y) {
+      if (!GAME_CONFIG.FOG_OF_WAR_ENABLED) return true;
+      const key = `${Math.floor(x)},${Math.floor(y)}`;
+      return state.visibleTiles.has(key);
+    }
+
+    function isTileExplored(x, y) {
+      if (!GAME_CONFIG.FOG_OF_WAR_ENABLED) return true;
+      const key = `${Math.floor(x)},${Math.floor(y)}`;
+      return state.exploredTiles.has(key);
     }
 
     function syncPersistenceTimestamp() {
@@ -1846,9 +1962,25 @@
         if (b.type === 'radar') img = IMAGES.radar;
 
         if (img) {
-          const imgX = px + (TILE_SIZE - img.width) / 2;
-          const imgY = py + (TILE_SIZE - img.height) / 2;
-          ctx.drawImage(img, imgX, imgY);
+          // Scale image to fit tile
+          const maxSize = TILE_SIZE - 8;
+          let scaleX = 1, scaleY = 1;
+          
+          if (img.width > maxSize) {
+            scaleX = maxSize / img.width;
+          }
+          if (img.height > maxSize) {
+            scaleY = maxSize / img.height;
+          }
+          
+          const scale = Math.min(scaleX, scaleY);
+          const scaledWidth = img.width * scale;
+          const scaledHeight = img.height * scale;
+          
+          const imgX = px + (TILE_SIZE - scaledWidth) / 2;
+          const imgY = py + (TILE_SIZE - scaledHeight) / 2;
+          
+          ctx.drawImage(img, imgX, imgY, scaledWidth, scaledHeight);
         } else {
           ctx.fillStyle = b.type === 'mine' ? '#5b8ab5' : 
                           b.type === 'residence' ? '#7a9d5c' : 
@@ -1916,11 +2048,34 @@
 
         const assetKey = u.type === 'tank' ? 'tank' : (u.type === 'civilian' ? 'civilian' : 'soldier');
         const img = IMAGES[assetKey];
-        if (img) {
-          const imgX = px + (TILE_SIZE - img.width) / 2;
-          const imgY = py + (TILE_SIZE - img.height) / 2;
-          ctx.drawImage(img, imgX, imgY);
+        
+        // Only render if visible
+        if (!isTileVisible(u.x, u.y)) {
+          return;  // Skip this unit (forEach, not for loop)
+        }
+
+        if (img && img.width > 0 && img.height > 0) {
+          // Scale image to fit tile with proper aspect ratio
+          const maxSize = TILE_SIZE - 4;  // Leave small margin
+          let scaleX = 1, scaleY = 1;
+          
+          if (img.width > maxSize) {
+            scaleX = maxSize / img.width;
+          }
+          if (img.height > maxSize) {
+            scaleY = maxSize / img.height;
+          }
+          
+          const scale = Math.min(scaleX, scaleY);
+          const scaledWidth = img.width * scale;
+          const scaledHeight = img.height * scale;
+          
+          const imgX = px + (TILE_SIZE - scaledWidth) / 2;
+          const imgY = py + (TILE_SIZE - scaledHeight) / 2;
+          
+          ctx.drawImage(img, imgX, imgY, scaledWidth, scaledHeight);
         } else {
+          // Fallback circle if image not available
           ctx.fillStyle = u.type === 'tank' ? '#c1443a' : (u.type === 'civilian' ? '#c9a13c' : '#c17a3f');
           ctx.beginPath();
           ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, u.type === 'tank' ? 18 : 10, 0, Math.PI * 2);
@@ -1940,6 +2095,64 @@
         ctx.fillStyle = '#7a9d5c';
         ctx.fillRect(px + 8, py - 6, (TILE_SIZE - 16) * (u.hp / u.maxHp), 4);
       });
+
+      // Render Unit Count Badges (adaptive display for multiple units on same tile)
+      Object.entries(tileUnitCounts).forEach(([key, count]) => {
+        if (count > 1) {
+          const [tileX, tileY] = key.split(',').map(Number);
+          if (!isTileVisible(tileX, tileY)) return;
+          
+          const px = tileX * TILE_SIZE + state.camera.x;
+          const py = tileY * TILE_SIZE + state.camera.y;
+          
+          // Draw badge background
+          ctx.fillStyle = 'rgba(193, 122, 63, 0.8)';
+          const badgeRadius = 10;
+          ctx.beginPath();
+          ctx.arc(px + TILE_SIZE - 10, py + 10, badgeRadius, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw count text
+          ctx.fillStyle = '#e8e4d8';
+          ctx.font = 'bold 12px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(count, px + TILE_SIZE - 10, py + 10);
+        }
+      });
+
+      // Render Fog of War
+      if (GAME_CONFIG.FOG_OF_WAR_ENABLED) {
+        // Render shroud (unexplored areas)
+        ctx.fillStyle = GAME_CONFIG.FOG_SHROUD_COLOR;
+        for (let gridX = Math.floor((-state.camera.x) / TILE_SIZE) - 1; gridX < Math.floor((-state.camera.x + canvas.width) / TILE_SIZE) + 1; gridX++) {
+          for (let gridY = Math.floor((-state.camera.y) / TILE_SIZE) - 1; gridY < Math.floor((-state.camera.y + canvas.height) / TILE_SIZE) + 1; gridY++) {
+            const tileKey = `${gridX},${gridY}`;
+            
+            // Only show fog on unexplored tiles
+            if (!state.exploredTiles.has(tileKey)) {
+              const px = gridX * TILE_SIZE + state.camera.x;
+              const py = gridY * TILE_SIZE + state.camera.y;
+              ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            }
+          }
+        }
+        
+        // Render explored but not visible fog (darker shroud)
+        ctx.fillStyle = GAME_CONFIG.EXPLORED_COLOR;
+        for (let gridX = Math.floor((-state.camera.x) / TILE_SIZE) - 1; gridX < Math.floor((-state.camera.x + canvas.width) / TILE_SIZE) + 1; gridX++) {
+          for (let gridY = Math.floor((-state.camera.y) / TILE_SIZE) - 1; gridY < Math.floor((-state.camera.y + canvas.height) / TILE_SIZE) + 1; gridY++) {
+            const tileKey = `${gridX},${gridY}`;
+            
+            // Show light fog on explored but not visible tiles
+            if (state.exploredTiles.has(tileKey) && !state.visibleTiles.has(tileKey)) {
+              const px = gridX * TILE_SIZE + state.camera.x;
+              const py = gridY * TILE_SIZE + state.camera.y;
+              ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            }
+          }
+        }
+      }
 
       // Render Cannon Flare Effects
       shotFlares.forEach((flare) => {
